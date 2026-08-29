@@ -1,0 +1,30 @@
+{% extends "_layouts/cp" %}
+
+{% set title = "Preflight report"|t('pwa') %}
+{% set selectedSubnavItem = 'preflight' %}
+{% set crumbs = [{ label: "Preflight"|t('pwa'), url: url('pwa/preflight') }] %}
+
+{% block content %}
+    {% include "pwa/_partials/style" %}
+
+    {% set band = audit.score >= 90 ? 'good' : (audit.score >= 70 ? 'fair' : 'poor') %}
+
+    <div class="pwa-panel">
+        <div class="pwa-score pwa-score--{{ band }}">
+            <div class="pwa-score__value">{{ audit.score }}</div>
+            <div>
+                <div><strong>{{ site ? site.name : "Site"|t('pwa') }}</strong></div>
+                <div class="pwa-sub">
+                    {{ audit.dateCreated|datetime('short') }} · {{ audit.trigger }} ·
+                    {{ audit.installable ? "installable"|t('pwa') : "not installable"|t('pwa') }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="pwa-panel">
+        {# A stored report is rendered from what it recorded, not from today's checks — so it keeps
+           saying what was true on the day. #}
+        {% include "pwa/preflight/_checks" %}
+    </div>
+{% endblock %}

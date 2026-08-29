@@ -1,0 +1,112 @@
+{% extends "_layouts/cp" %}
+{% import "_includes/forms" as forms %}
+
+{% set title = "Preflight"|t('pwa') %}
+{% set selectedSubnavItem = 'preflight' %}
+
+{% block actionButton %}
+    <form method="post" accept-charset="UTF-8">
+        {{ csrfInput() }}
+        {{ actionInput('pwa/preflight/run') }}
+        <button type="submit" class="btn submit">{{ "Run the check"|t('pwa') }}</button>
+    </form>
+{% endblock %}
+
+{% block content %}
+    {% include "pwa/_partials/style" %}
+
+    {% if audit is null %}
+        <div class="pwa-panel">
+            <h2>{{ "Nothing checked yet"|t('pwa') }}</h2>
+            <p>
+                {{ "Preflight fetches this site over HTTP the way a browser would — the manifest, the service worker, the icons, the start URL — and reports what it finds rather than what the settings say. Run it once now, and again after any deploy."|t('pwa') }}
+            </p>
+        </div>
+    {% else %}
+        {% set band = audit.score >= 90 ? 'good' : (audit.score >= 70 ? 'fair' : 'poor') %}
+
+        <div class="pwa-panel">
+            <div class="pwa-score pwa-score--{{ band }}">
+                <div class="pwa-score__value">{{ audit.score }}</div>
+                <div>
+                    <div>
+                        {% if audit.installable %}
+                            <strong>{{ "A browser will offer to install this."|t('pwa') }}</strong>
+                        {% else %}
+                            <strong>{{ "No browser will offer to install this yet."|t('pwa') }}</strong>
+                        {% endif %}
+                    </div>
+                    <div class="pwa-sub">
+                        {{ "{passed} passed, {warned} warnings, {failed} failed"|t('pwa', {
+                            passed: audit.passed,
+                            warned: audit.warned,
+                            failed: audit.failed,
+                        }) }}
+                        · {{ audit.dateCreated ? audit.dateCreated|datetime('short') : '' }}
+                        · {{ audit.trigger }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if audit.blockers|length %}
+            <div class="pwa-panel pwa-danger">
+                <h3>{{ "Fix these first"|t('pwa') }}</h3>
+                <p class="pwa-sub">
+                    {{ "Each of these is part of the browser's own installability test. Everything else on this page is about how good the app is; these are about whether there is one."|t('pwa') }}
+                </p>
+                {% for check in audit.blockers %}
+                    <div class="pwa-check pwa-check--fail">
+                        <div class="pwa-check__mark" aria-hidden="true">✕</div>
+                        <div>
+                            <div class="pwa-check__label">{{ check.label }}</div>
+                            <div class="pwa-check__summary">{{ check.summary }}</div>
+                            {% if check.remediation %}<div class="pwa-check__fix">{{ check.remediation }}</div>{% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <div class="pwa-panel">
+            {% include "pwa/preflight/_checks" %}
+        </div>
+    {% endif %}
+
+    {% if not isPro %}
+        <div class="pwa-panel">
+            <h3>{{ "Scheduled checks"|t('pwa') }}</h3>
+            <p class="pwa-sub">
+                {{ "PWA Pro runs this on a schedule and emails somebody when a deploy breaks it — which is the run that matters, because it is the one nobody thought to do."|t('pwa') }}
+            </p>
+        </div>
+    {% endif %}
+
+    {% if history|length > 1 %}
+        <div class="pwa-panel">
+            <h3>{{ "History"|t('pwa') }}</h3>
+            <table class="data fullwidth">
+                <thead>
+                    <tr>
+                        <th>{{ "When"|t('pwa') }}</th>
+                        <th>{{ "Score"|t('pwa') }}</th>
+                        <th>{{ "Installable"|t('pwa') }}</th>
+                        <th>{{ "Problems"|t('pwa') }}</th>
+                        <th>{{ "Trigger"|t('pwa') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in history %}
+                        <tr>
+                            <td><a href="{{ url('pwa/preflight/' ~ row.id) }}">{{ row.dateCreated|datetime('short') }}</a></td>
+                            <td>{{ row.score }}</td>
+                            <td>{{ row.installable ? "Yes"|t('pwa') : "No"|t('pwa') }}</td>
+                            <td>{{ row.failed + row.warned }}</td>
+                            <td>{{ row.trigger }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+{% endblock %}

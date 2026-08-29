@@ -1,0 +1,52 @@
+{% set band = audit.score >= 90 ? '#27ab83' : (audit.score >= 70 ? '#d9822b' : '#cf1124') %}
+
+<div style="font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111827;max-width:640px">
+    <p style="margin:0 0 4px;font-size:13px;color:#6b7280">{{ "PWA preflight"|t('pwa') }}</p>
+    <h1 style="margin:0 0 16px;font-size:20px">{{ siteName }}</h1>
+
+    <table role="presentation" style="border-collapse:collapse;margin-bottom:20px">
+        <tr>
+            <td style="font-size:38px;font-weight:600;color:{{ band }};padding-right:16px">{{ audit.score }}</td>
+            <td style="font-size:14px;color:#374151">
+                {% if audit.installable %}
+                    {{ "A browser will offer to install this site."|t('pwa') }}
+                {% else %}
+                    <strong style="color:#cf1124">{{ "No browser will offer to install this site."|t('pwa') }}</strong>
+                {% endif %}
+                <br>
+                <span style="color:#6b7280">
+                    {{ "{passed} passed · {warned} warnings · {failed} failed"|t('pwa', {
+                        passed: audit.passed, warned: audit.warned, failed: audit.failed,
+                    }) }}
+                </span>
+            </td>
+        </tr>
+    </table>
+
+    {% set problems = audit.problems %}
+
+    {% if problems|length %}
+        <h2 style="font-size:15px;margin:0 0 10px">{{ "What to look at"|t('pwa') }}</h2>
+
+        {% for check in problems %}
+            <div style="border-left:3px solid {{ check.status == 'fail' ? '#cf1124' : '#d9822b' }};padding:2px 0 2px 12px;margin-bottom:14px">
+                <div style="font-weight:600">
+                    {{ check.label }}
+                    {% if check.blocking %}
+                        <span style="font-size:11px;background:#cf1124;color:#fff;padding:1px 6px;border-radius:9px">{{ "blocks install"|t('pwa') }}</span>
+                    {% endif %}
+                </div>
+                <div style="color:#374151">{{ check.summary }}</div>
+                {% if check.remediation %}
+                    <div style="color:#6b7280;font-size:14px;margin-top:3px">{{ check.remediation }}</div>
+                {% endif %}
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>{{ "Everything passed."|t('pwa') }}</p>
+    {% endif %}
+
+    <p style="margin-top:24px">
+        <a href="{{ url }}" style="color:#0b69a3">{{ "Open the full report"|t('pwa') }}</a>
+    </p>
+</div>

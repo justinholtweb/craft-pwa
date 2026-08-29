@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="PWA">
+  <!-- Airline navy plate. The mark is a vertical stabiliser — the part of an aircraft that carries
+       the livery, and the one aviation silhouette that still reads at 16px — rising off a ground
+       line, with signal arcs beside it for the progressive half. -->
+  <rect width="128" height="128" rx="26" fill="#0B3D91"/>
+  <g fill="none" stroke="#6FA0FF" stroke-width="6" stroke-linecap="round">
+    <path d="M30 74A26 26 0 0 1 52.5 87"/>
+    <path d="M30 54A46 46 0 0 1 62.5 67.5"/>
+  </g>
+  <path d="M50 100 L88 32c2.4-4.2 8.6-2.5 8.6 2.3V100z" fill="#F7FAFF"/>
+  <rect x="26" y="102" width="78" height="10" rx="5" fill="#F7FAFF"/>
+</svg>

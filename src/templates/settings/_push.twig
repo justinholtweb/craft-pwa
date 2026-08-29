@@ -1,0 +1,212 @@
+{% import "_includes/forms" as forms %}
+{% if not isPro %}
+    <div class="pwa-panel">
+        <h2>{{ "Web push is a Pro feature"|t('pwa') }}</h2>
+        <p class="pwa-sub">
+            {{ "Pro sends notifications from this Craft install directly to browsers — no third-party service, no per-message pricing, and the payload encrypted end to end so the push service relays something it cannot read."|t('pwa') }}
+        </p>
+    </div>
+{% else %}
+    <div class="pwa-panel">
+        <h2>{{ "Push"|t('pwa') }}</h2>
+
+        {{ forms.lightswitchField({
+            label: "Enabled"|t('pwa'),
+            instructions: "Whether visitors may subscribe at all."|t('pwa'),
+            id: 'pushEnabled',
+            name: 'settings[pushEnabled]',
+            on: settings.pushEnabled,
+        }) }}
+
+        {{ forms.autosuggestField({
+            label: "Contact address"|t('pwa'),
+            instructions: "A mailto: or https:// URL. Push services use it to reach a human when a sender misbehaves, and some of them reject messages without one."|t('pwa'),
+            id: 'pushSubject',
+            name: 'settings[pushSubject]',
+            value: settings.pushSubject,
+            suggestEnvVars: true,
+            placeholder: 'mailto:you@example.com',
+            errors: settings.getErrors('pushSubject'),
+        }) }}
+
+        {{ forms.textField({
+            label: "Default icon"|t('pwa'),
+            instructions: "URL shown on the notification. Falls back to the 192px app icon."|t('pwa'),
+            id: 'pushIcon',
+            name: 'settings[pushIcon]',
+            value: settings.pushIcon,
+        }) }}
+
+        {{ forms.textField({
+            label: "Badge"|t('pwa'),
+            instructions: "The monochrome silhouette Android shows in the status bar. A colour logo here becomes a grey blob."|t('pwa'),
+            id: 'pushBadge',
+            name: 'settings[pushBadge]',
+            value: settings.pushBadge,
+        }) }}
+    </div>
+
+    <div class="pwa-panel">
+        <h2>{{ "VAPID keypair"|t('pwa') }}</h2>
+        <p class="pwa-sub">
+            {{ "Identifies this site to every push service. Generated automatically, stored in the database rather than in project config — a private key in project config is a private key in git, and therefore on every laptop that ever cloned the repo."|t('pwa') }}
+        </p>
+
+        {% if hasEnvKeys %}
+            <p>{{ "Supplied by environment variables (PWA_VAPID_PUBLIC_KEY / PWA_VAPID_PRIVATE_KEY), which take precedence over anything stored here."|t('pwa') }}</p>
+        {% endif %}
+
+        {% if vapidPublicKey %}
+            <dl class="pwa-kv">
+                <dt>{{ "Public key"|t('pwa') }}</dt>
+                <dd><code>{{ vapidPublicKey }}</code></dd>
+                <dt>{{ "Subscribed devices"|t('pwa') }}</dt>
+                <dd>{{ subscribers }}</dd>
+            </dl>
+        {% else %}
+            <p>{{ "No keypair yet. One is generated the first time it is needed."|t('pwa') }}</p>
+        {% endif %}
+    </div>
+
+    <div class="pwa-panel">
+        <h2>{{ "Broadcast on publish"|t('pwa') }}</h2>
+
+        {{ forms.lightswitchField({
+            label: "Notify when an entry is published"|t('pwa'),
+            instructions: "Only the first time an entry goes live, and only in the sections below. Drafts, revisions, propagations and resaves are ignored — Craft fires a save for all of those, and only one of them is news."|t('pwa'),
+            id: 'pushOnPublish',
+            name: 'settings[pushOnPublish]',
+            on: settings.pushOnPublish,
+        }) }}
+
+        {{ forms.checkboxSelectField({
+            label: "Sections"|t('pwa'),
+            id: 'pushSections',
+            name: 'settings[pushSections]',
+            values: settings.pushSections,
+            options: sections|map(s => { label: s.name, value: s.uid }),
+        }) }}
+    </div>
+
+    <div class="pwa-panel">
+        <h2>{{ "Delivery"|t('pwa') }}</h2>
+
+        {{ forms.textField({
+            label: "Devices per queue job"|t('pwa'),
+            instructions: "Each job sends this many and queues the next. Small enough to finish inside any queue timeout."|t('pwa'),
+            id: 'pushBatchSize',
+            name: 'settings[pushBatchSize]',
+            value: settings.pushBatchSize,
+            type: 'number',
+            size: 6,
+        }) }}
+
+        {{ forms.textField({
+            label: "Drop a device after"|t('pwa'),
+            instructions: "Consecutive failures. A device the push service says is gone is dropped immediately, whatever this says."|t('pwa'),
+            id: 'pushMaxFailures',
+            name: 'settings[pushMaxFailures]',
+            value: settings.pushMaxFailures,
+            type: 'number',
+            size: 5,
+            suffix: "failures"|t('pwa'),
+        }) }}
+
+        {{ forms.textField({
+            label: "Keep delivery records for"|t('pwa'),
+            id: 'deliveryRetentionDays',
+            name: 'settings[deliveryRetentionDays]',
+            value: settings.deliveryRetentionDays,
+            type: 'number',
+            size: 5,
+            suffix: "days"|t('pwa'),
+        }) }}
+    </div>
+
+    <div class="pwa-panel">
+        <h2>{{ "Scheduled preflight"|t('pwa') }}</h2>
+
+        {{ forms.lightswitchField({
+            label: "Run on a schedule"|t('pwa'),
+            instructions: "Checks the site over HTTP and emails somebody when a deploy has broken it — which is the run that matters, because it is the one nobody thought to do."|t('pwa'),
+            id: 'preflightScheduled',
+            name: 'settings[preflightScheduled]',
+            on: settings.preflightScheduled,
+        }) }}
+
+        {{ forms.selectField({
+            label: "How often"|t('pwa'),
+            id: 'preflightCadence',
+            name: 'settings[preflightCadence]',
+            value: settings.preflightCadence,
+            options: [
+                { label: "Daily"|t('pwa'), value: 'daily' },
+                { label: "Weekly"|t('pwa'), value: 'weekly' },
+            ],
+        }) }}
+
+        {{ forms.textField({
+            label: "At"|t('pwa'),
+            id: 'preflightHour',
+            name: 'settings[preflightHour]',
+            value: settings.preflightHour,
+            type: 'number',
+            size: 4,
+            suffix: ":00"|t('pwa'),
+        }) }}
+
+        {{ forms.textareaField({
+            label: "Email the report to"|t('pwa'),
+            instructions: "One address per line."|t('pwa'),
+            id: 'preflightRecipients',
+            name: 'settings[preflightRecipients]',
+            value: settings.preflightRecipients|join("\n"),
+            rows: 3,
+            errors: settings.getErrors('preflightRecipients'),
+        }) }}
+
+        {{ forms.lightswitchField({
+            label: "Only when something fails"|t('pwa'),
+            instructions: "A weekly “all is well” gets filtered within a month, and the week it does not arrive is the week nobody notices."|t('pwa'),
+            id: 'preflightOnlyOnFailure',
+            name: 'settings[preflightOnlyOnFailure]',
+            on: settings.preflightOnlyOnFailure,
+        }) }}
+    </div>
+
+    <div class="pwa-panel pwa-danger">
+        <h2>{{ "Rotate the keypair"|t('pwa') }}</h2>
+        <p>
+            {{ "Every subscription a browser holds is bound to the public key it was created with. Rotating orphans all {count} of them, and each device has to opt in again from the site. There is no recovery."|t('pwa', { count: subscribers }) }}
+        </p>
+        <div class="flex">
+            <input type="text" class="text" id="pwa-rotate-confirm" placeholder="{{ 'Type rotate'|t('pwa') }}" size="12" autocomplete="off">
+            <button type="button" class="btn disabled" id="pwa-rotate" disabled>{{ "Rotate"|t('pwa') }}</button>
+        </div>
+    </div>
+
+    {% js %}
+        const rotateField = document.getElementById('pwa-rotate-confirm');
+        const rotateButton = document.getElementById('pwa-rotate');
+
+        rotateField?.addEventListener('input', function() {
+            const armed = this.value.trim().toLowerCase() === 'rotate';
+            rotateButton.disabled = !armed;
+            rotateButton.classList.toggle('disabled', !armed);
+        });
+
+        rotateButton?.addEventListener('click', function() {
+            if (this.disabled) return;
+
+            this.classList.add('loading');
+
+            Craft.sendActionRequest('POST', 'pwa/settings/rotate-keys', { data: { confirm: rotateField.value.trim() } })
+                .then(response => {
+                    Craft.cp.displayNotice(response.data.message);
+                    window.location.reload();
+                })
+                .catch(e => Craft.cp.displayError(e?.response?.data?.message || Craft.t('pwa', 'Could not rotate the keypair.')))
+                .finally(() => this.classList.remove('loading'));
+        });
+    {% endjs %}
+{% endif %}

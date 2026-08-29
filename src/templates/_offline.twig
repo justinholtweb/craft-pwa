@@ -1,0 +1,49 @@
+{# The fallback offline page.
+   Entirely self-contained: it is rendered when there is no network, so a stylesheet, a font or an
+   image referenced from here would be one more thing to have gone missing. #}
+<!DOCTYPE html>
+<html lang="{{ craft.app.language }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ "Offline"|t('pwa') }} — {{ manifest.effectiveName }}</title>
+    <style>
+        :root { color-scheme: light dark; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 2rem;
+            text-align: center;
+            font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+            background: {{ manifest.backgroundColor }};
+            color: #111827;
+        }
+        @media (prefers-color-scheme: dark) {
+            body { background: #14181f; color: #e8eaed; }
+        }
+        img { width: 72px; height: 72px; border-radius: 16px; margin-bottom: 1.25rem; }
+        h1 { font-size: 1.4rem; margin: 0 0 .5rem; }
+        p { margin: 0 0 1.25rem; opacity: .75; max-width: 32rem; }
+        button {
+            font: inherit;
+            font-weight: 600;
+            border: 0;
+            border-radius: 8px;
+            padding: .6rem 1.1rem;
+            cursor: pointer;
+            background: {{ manifest.themeColor }};
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        {% if icon %}<img src="{{ icon }}" alt="">{% endif %}
+        <h1>{{ "You are offline"|t('pwa') }}</h1>
+        <p>{{ "This page has not been opened on this device before, so there is no copy stored here. Pages you have already visited will still work."|t('pwa') }}</p>
+        <button type="button" onclick="location.reload()">{{ "Try again"|t('pwa') }}</button>
+    </div>
+</body>
+</html>

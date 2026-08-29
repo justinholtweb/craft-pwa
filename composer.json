@@ -1,0 +1,75 @@
+{
+    "name": "justinholtweb/craft-pwa",
+    "description": "Turn a Craft site into an installable progressive web app — manifest, icons, a generated service worker with per-route caching, an offline page, an install prompt, web push, and a preflight check that tells you why the browser will not offer to install it.",
+    "type": "craft-plugin",
+    "version": "5.0.0",
+    "keywords": [
+        "craft",
+        "cms",
+        "craftcms",
+        "craft-plugin",
+        "pwa",
+        "progressive web app",
+        "service worker",
+        "manifest",
+        "offline",
+        "web push",
+        "push notifications",
+        "installable",
+        "add to home screen"
+    ],
+    "license": "proprietary",
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "authors": [
+        {
+            "name": "Justin Holt",
+            "homepage": "https://justinholt.com"
+        }
+    ],
+    "support": {
+        "docs": "https://craft-pwa.com/docs",
+        "source": "https://github.com/justinholtweb/craft-pwa",
+        "issues": "https://github.com/justinholtweb/craft-pwa/issues"
+    },
+    "require": {
+        "php": "^8.2",
+        "ext-json": "*",
+        "ext-openssl": "*",
+        "craftcms/cms": "^5.3.0"
+    },
+    "require-dev": {
+        "craftcms/ecs": "dev-main",
+        "craftcms/phpstan": "dev-main",
+        "phpunit/phpunit": "^10.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "justinholtweb\\pwa\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "justinholtweb\\pwa\\tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "allow-plugins": {
+            "yiisoft/yii2-composer": true,
+            "craftcms/plugin-installer": true,
+            "craftcms/generator": true
+        }
+    },
+    "extra": {
+        "name": "PWA",
+        "handle": "pwa",
+        "developer": "Justin Holt",
+        "developerUrl": "https://justinholt.com",
+        "documentationUrl": "https://craft-pwa.com/docs",
+        "changelogUrl": "https://raw.githubusercontent.com/justinholtweb/craft-pwa/main/CHANGELOG.md",
+        "class": "justinholtweb\\pwa\\Plugin"
+    }
+}

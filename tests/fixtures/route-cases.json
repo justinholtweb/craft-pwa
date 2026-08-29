@@ -1,0 +1,234 @@
+{
+  "_comment": "One table of cases, asserted twice: by RouteTest against the PHP matcher, and by tests/js/route-parity.mjs against the matcher inside the generated service worker. The two implementations exist because one has to run in a browser and one has to run in the control panel; this file is what stops them drifting.",
+  "routes": [
+    {
+      "label": "Control panel",
+      "match": "path",
+      "patterns": [
+        "/admin/*"
+      ],
+      "strategy": "networkOnly",
+      "cache": "pages",
+      "timeout": 0,
+      "fallback": false
+    },
+    {
+      "label": "Craft actions",
+      "match": "path",
+      "patterns": [
+        "/actions/*"
+      ],
+      "strategy": "networkOnly",
+      "cache": "pages",
+      "timeout": 0,
+      "fallback": false
+    },
+    {
+      "label": "Feeds",
+      "match": "path",
+      "patterns": [
+        "/feed",
+        "/rss/*"
+      ],
+      "strategy": "networkOnly",
+      "cache": "pages",
+      "timeout": 0,
+      "fallback": false
+    },
+    {
+      "label": "Downloads",
+      "match": "extension",
+      "patterns": [
+        "pdf",
+        "zip"
+      ],
+      "strategy": "cacheFirst",
+      "cache": "assets",
+      "timeout": 0,
+      "fallback": false
+    },
+    {
+      "label": "Images",
+      "match": "destination",
+      "patterns": [
+        "image"
+      ],
+      "strategy": "staleWhileRevalidate",
+      "cache": "images",
+      "timeout": 0,
+      "fallback": false
+    },
+    {
+      "label": "Static hosts",
+      "match": "host",
+      "patterns": [
+        "cdn.*"
+      ],
+      "strategy": "cacheFirst",
+      "cache": "assets",
+      "timeout": 0,
+      "fallback": false
+    },
+    {
+      "label": "Pages",
+      "match": "path",
+      "patterns": [
+        "*"
+      ],
+      "strategy": "networkFirst",
+      "cache": "pages",
+      "timeout": 3,
+      "fallback": true
+    }
+  ],
+  "cases": [
+    {
+      "why": "the control panel is claimed by the first rule and never cached",
+      "path": "/admin/dashboard",
+      "destination": "document",
+      "host": "example.com",
+      "expect": 0
+    },
+    {
+      "why": "a nested control panel path still matches, because * spans slashes",
+      "path": "/admin/entries/blog/12-a-post",
+      "destination": "document",
+      "host": "example.com",
+      "expect": 0
+    },
+    {
+      "why": "the control panel root without a trailing slash is NOT matched by /admin/*",
+      "path": "/admin",
+      "destination": "document",
+      "host": "example.com",
+      "expect": 6
+    },
+    {
+      "why": "action requests bypass the cache",
+      "path": "/actions/users/login",
+      "destination": "",
+      "host": "example.com",
+      "expect": 1
+    },
+    {
+      "why": "extensions are matched case-insensitively",
+      "path": "/files/Report.PDF",
+      "destination": "document",
+      "host": "example.com",
+      "expect": 3
+    },
+    {
+      "why": "an extension rule ignores a path with no extension at all",
+      "path": "/files/report",
+      "destination": "document",
+      "host": "example.com",
+      "expect": 6
+    },
+    {
+      "why": "the browser's own request type wins over the file extension",
+      "path": "/uploads/hero.webp",
+      "destination": "image",
+      "host": "example.com",
+      "expect": 4
+    },
+    {
+      "why": "a host pattern matches a subdomain prefix",
+      "path": "/build/app.js",
+      "destination": "script",
+      "host": "cdn.example.com",
+      "expect": 5
+    },
+    {
+      "why": "an ordinary page falls through to the catch-all",
+      "path": "/blog/some-article",
+      "destination": "document",
+      "host": "example.com",
+      "expect": 6
+    },
+    {
+      "why": "the site root falls through to the catch-all",
+      "path": "/",
+      "destination": "document",
+      "host": "example.com",
+      "expect": 6
+    },
+    {
+      "why": "a path that merely contains 'admin' is not the control panel",
+      "path": "/about/administration",
+      "destination": "document",
+      "host": "example.com",
+      "expect": 6
+    },
+    {
+      "why": "a query string is not part of the path",
+      "path": "/search",
+      "destination": "document",
+      "host": "example.com",
+      "expect": 6
+    },
+    {
+      "why": "the first of a rule's alternatives claims it",
+      "path": "/feed",
+      "destination": "document",
+      "host": "example.com",
+      "expect": 2
+    },
+    {
+      "why": "the second alternative claims it too",
+      "path": "/rss/news",
+      "destination": "document",
+      "host": "example.com",
+      "expect": 2
+    },
+    {
+      "why": "neither alternative matches, so it falls through",
+      "path": "/feeds",
+      "destination": "document",
+      "host": "example.com",
+      "expect": 6
+    }
+  ],
+  "globs": [
+    {
+      "pattern": "*",
+      "subject": "/anything/at/all",
+      "expect": true
+    },
+    {
+      "pattern": "/blog/*",
+      "subject": "/blog/",
+      "expect": true
+    },
+    {
+      "pattern": "/blog/*",
+      "subject": "/blog",
+      "expect": false
+    },
+    {
+      "pattern": "/page-?",
+      "subject": "/page-2",
+      "expect": true
+    },
+    {
+      "pattern": "/page-?",
+      "subject": "/page-22",
+      "expect": false
+    },
+    {
+      "pattern": "/News/*",
+      "subject": "/news/latest",
+      "expect": true
+    },
+    {
+      "pattern": "/file.js",
+      "subject": "/fileXjs",
+      "expect": false
+    },
+    {
+      "pattern": "/a,/b",
+      "subject": "/b",
+      "expect": false,
+      "why": "globMatches takes one pattern; a comma in it is a literal character"
+    }
+  ]
+}

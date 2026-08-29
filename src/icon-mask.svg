@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="PWA">
+  <!-- The silhouette Craft masks into the control panel nav: one colour, no plate. -->
+  <g fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" opacity="0.7">
+    <path d="M30 74A26 26 0 0 1 52.5 87"/>
+    <path d="M30 54A46 46 0 0 1 62.5 67.5"/>
+  </g>
+  <path d="M50 100 L88 32c2.4-4.2 8.6-2.5 8.6 2.3V100z" fill="currentColor"/>
+  <rect x="26" y="102" width="78" height="10" rx="5" fill="currentColor"/>
+</svg>

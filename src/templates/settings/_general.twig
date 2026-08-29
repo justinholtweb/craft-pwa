@@ -1,0 +1,108 @@
+{% import "_includes/forms" as forms %}
+<div class="pwa-panel">
+    <h2>{{ "Delivery"|t('pwa') }}</h2>
+
+    {{ forms.lightswitchField({
+        label: "Enabled"|t('pwa'),
+        instructions: "The master switch. Off means no manifest, no service worker and no injected tags."|t('pwa'),
+        id: 'enabled',
+        name: 'settings[enabled]',
+        on: settings.enabled,
+    }) }}
+
+    {{ forms.textField({
+        label: "Manifest path"|t('pwa'),
+        instructions: "Relative to the web root."|t('pwa'),
+        id: 'manifestPath',
+        name: 'settings[manifestPath]',
+        value: settings.manifestPath,
+        errors: settings.getErrors('manifestPath'),
+    }) }}
+
+    {{ forms.lightswitchField({
+        label: "Service worker"|t('pwa'),
+        instructions: "Without one the site cannot be installed and does nothing offline."|t('pwa'),
+        id: 'serviceWorkerEnabled',
+        name: 'settings[serviceWorkerEnabled]',
+        on: settings.serviceWorkerEnabled,
+    }) }}
+
+    {{ forms.textField({
+        label: "Service worker path"|t('pwa'),
+        instructions: "Keep it at the web root. A worker served from a subdirectory can only control that subdirectory, whatever the manifest says."|t('pwa'),
+        id: 'serviceWorkerPath',
+        name: 'settings[serviceWorkerPath]',
+        value: settings.serviceWorkerPath,
+        errors: settings.getErrors('serviceWorkerPath'),
+    }) }}
+</div>
+
+<div class="pwa-panel">
+    <h2>{{ "Tags in the page"|t('pwa') }}</h2>
+
+    {{ forms.lightswitchField({
+        label: "Inject automatically"|t('pwa'),
+        instructions: "Writes the manifest link, the iOS meta tags and the registration script into <head> on site requests. Turn it off to place {{ pwa.head() }} yourself."|t('pwa'),
+        id: 'injectHead',
+        name: 'settings[injectHead]',
+        on: settings.injectHead,
+    }) }}
+
+    {{ forms.textareaField({
+        label: "Never inject into"|t('pwa'),
+        instructions: "One URI pattern per line, * allowed. A print route, a headless preview or a third-party embed generally does not want a service worker attached."|t('pwa'),
+        id: 'injectExclude',
+        name: 'settings[injectExclude]',
+        value: settings.injectExclude|join("\n"),
+        rows: 3,
+    }) }}
+
+    {{ forms.selectField({
+        label: "iOS status bar"|t('pwa'),
+        instructions: "“Translucent” draws the page under the status bar, which looks striking and clips any layout not designed for it."|t('pwa'),
+        id: 'iosStatusBarStyle',
+        name: 'settings[iosStatusBarStyle]',
+        value: settings.iosStatusBarStyle,
+        options: [
+            { label: "Default"|t('pwa'), value: 'default' },
+            { label: "Black"|t('pwa'), value: 'black' },
+            { label: "Black translucent"|t('pwa'), value: 'black-translucent' },
+        ],
+    }) }}
+
+    {{ forms.lightswitchField({
+        label: "Generate iOS splash screens"|t('pwa'),
+        instructions: "Twenty-four images. Worth it only because Safari is the one platform that will not derive a launch screen from the background colour and the icon."|t('pwa'),
+        id: 'splashEnabled',
+        name: 'settings[splashEnabled]',
+        on: settings.splashEnabled,
+    }) }}
+</div>
+
+<div class="pwa-panel">
+    <h2>{{ "The black box"|t('pwa') }}</h2>
+
+    {{ forms.lightswitchField({
+        label: "Record events"|t('pwa'),
+        instructions: "Installs, launches and offline hits. No identifiers, no cookies, nothing that names a person."|t('pwa'),
+        id: 'trackEvents',
+        name: 'settings[trackEvents]',
+        on: settings.trackEvents,
+    }) }}
+
+    {{ forms.textField({
+        label: "Keep events for"|t('pwa'),
+        id: 'eventRetentionDays',
+        name: 'settings[eventRetentionDays]',
+        value: settings.eventRetentionDays,
+        type: 'number',
+        size: 5,
+        suffix: "days"|t('pwa'),
+    }) }}
+
+    {% if not webrootWritable %}
+        <p class="pwa-sub">
+            {{ "The web root is not writable, so generated icons live in storage/ and are served through Craft. That works, and it is slower — if this is production, making the web root writable is worth doing."|t('pwa') }}
+        </p>
+    {% endif %}
+</div>
