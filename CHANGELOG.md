@@ -32,7 +32,8 @@ the rest of the family.
   subscribers, broadcasts on a queue, delivery ledger, notify on publish. Subscriptions are only
   accepted on the browsers' own push services (plus any in `extraPushHosts`), sends never follow
   redirects, subscribing is rate limited by connecting address (forwarded headers only behind
-  configured `trustedHosts`), new devices are capped per minute and in total, malformed keys are
-  refused, and topics are capped
+  configured `trustedHosts`) and under a site-wide ceiling twenty times higher, new devices are
+  capped per minute and in total, malformed keys are refused, topics are capped, and control
+  panel test sends and preflight runs are budgeted per user
 - Scheduled preflight with an emailed report (Pro)
 - Console commands for preflight, icons, manifest and broadcasts

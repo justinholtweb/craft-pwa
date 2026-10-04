@@ -8,4 +8,6 @@
  * has a registered category.
  */
 
-return [];
+return [    'That’s a lot of test sends. Try again in a minute.' => 'That’s a lot of test sends. Try again in a minute.',
+    'Preflight has run several times this minute. Try again shortly.' => 'Preflight has run several times this minute. Try again shortly.',
+];

@@ -5,20 +5,39 @@ namespace justinholtweb\pwa\helpers;
 use Craft;
 
 /**
- * Per-minute request budgets for PWA's anonymous routes: push subscriptions and the event recorder.
+ * Per-minute request budgets: per address for PWA's anonymous routes (push subscriptions, the
+ * event recorder), per user for control panel actions that call out to something else.
+ *
+ * The same model as Eye's `RateLimit`, which the family's anonymous routes share.
  */
 abstract class RateLimit
 {
+    /** The whole site's budget for a bucket, as a multiple of one address's. */
+    public const GLOBAL_FACTOR = 20;
+
     /**
      * Whether this client may make another request to `$bucket` this minute.
      *
-     * The count is read and written under a mutex: without it, requests sent in parallel all read
-     * the same number and none is ever refused. A busy lock refuses rather than queues — a worker
-     * held up waiting cannot serve anyone.
+     * Two budgets, and both must have room: one per address, and one for everybody. The global
+     * one is what stops an attacker with many addresses — a cloud range, an IPv6 block — from
+     * simply spreading the load. The per-address one is spent first, so a client already over its
+     * own limit doesn't eat into everybody else's.
      */
     public static function allow(string $bucket, int $perMinute): bool
     {
-        return self::consume(sprintf('pwa:rate:%s:%s:%d', $bucket, sha1(self::client()), intdiv(time(), 60)), $perMinute);
+        $minute = intdiv(time(), 60);
+
+        return self::consume(sprintf('pwa:rate:%s:%s:%d', $bucket, sha1(self::client()), $minute), $perMinute)
+            && self::consume(sprintf('pwa:rate:%s:*:%d', $bucket, $minute), $perMinute * self::GLOBAL_FACTOR);
+    }
+
+    /**
+     * Whether `$identity` — a signed-in user, say — may make another request to `$bucket` this
+     * minute. For actions that already know who is asking, where an address is the wrong unit.
+     */
+    public static function allowFor(string $bucket, string $identity, int $perMinute): bool
+    {
+        return self::consume(sprintf('pwa:rate:%s:user:%s:%d', $bucket, sha1($identity), intdiv(time(), 60)), $perMinute);
     }
 
     /**
@@ -76,6 +95,11 @@ abstract class RateLimit
         return $ip !== '' ? $ip : 'unknown';
     }
 
+    /**
+     * The count is read and written under a mutex: without it, requests sent in parallel all read
+     * the same number and none is ever refused. A busy lock refuses rather than queues — a worker
+     * held up waiting cannot serve anyone.
+     */
     private static function consume(string $key, int $limit): bool
     {
         $cache = Craft::$app->getCache();

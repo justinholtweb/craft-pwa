@@ -11,8 +11,9 @@ Preflight fetches the running site over HTTP the way a browser would and grades 
 checks the *result*, not the settings that produced it — because the settings always look right
 (they are what you just typed) and the manifest is still 404ing because of a rewrite rule.
 
-Run it from **PWA → Preflight**, or `php craft pwa/preflight/run`, which exits non-zero when the
-site is not installable. That exit code is the point: put it in your deploy pipeline.
+Run it from **PWA → Preflight** (up to six runs a minute per user, since each one fetches the
+live site), or `php craft pwa/preflight/run`, which exits non-zero when the site is not
+installable. That exit code is the point: put it in your deploy pipeline.
 
 ## Blocking checks
 

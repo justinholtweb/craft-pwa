@@ -4,6 +4,7 @@ namespace justinholtweb\pwa\controllers;
 
 use Craft;
 use craft\web\Controller;
+use justinholtweb\pwa\helpers\RateLimit;
 use justinholtweb\pwa\Plugin;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
@@ -18,6 +19,9 @@ use yii\web\Response;
  */
 class PreflightController extends Controller
 {
+    /** Manual preflight runs one user may start per minute. */
+    public const RUNS_PER_MINUTE = 6;
+
     public function beforeAction($action): bool
     {
         if (!parent::beforeAction($action)) {
@@ -60,6 +64,12 @@ class PreflightController extends Controller
     public function actionRun(): Response
     {
         $this->requirePostRequest();
+
+        // A run fetches the live site's manifest, worker and pages; a held-down button shouldn't
+        // turn that into a load test.
+        if (!RateLimit::allowFor('preflight', (string)Craft::$app->getUser()->getId(), self::RUNS_PER_MINUTE)) {
+            return $this->asFailure(Craft::t('pwa', 'Preflight has run several times this minute. Try again shortly.'));
+        }
 
         $site = Craft::$app->getSites()->getCurrentSite();
         $plugin = Plugin::getInstance();

@@ -84,7 +84,12 @@ return [
 Subscribing and unsubscribing are limited to 10 requests a minute from one address, and the event
 recorder to 60; past that they answer `429`. The address is the one the connection came from:
 `X-Forwarded-For` and similar headers are only believed when Craft's `trustedHosts` names your
-proxies (its default of `any` does not count). IPv6 addresses are limited per /64.
+proxies (its default of `any` does not count). IPv6 addresses are limited per /64. On top of each
+address's own limit, the whole site shares one twenty times larger, so many addresses together
+can't simply spread the load.
+
+In the control panel, test sends are limited to 10 a minute per user, since each one is a real
+request to a push service.
 
 Two more ceilings apply to *new* devices only, so a known device refreshing its subscription is
 never refused: at most `pushNewPerMinute` (300) across the whole site, and at most

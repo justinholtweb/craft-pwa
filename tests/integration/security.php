@@ -91,6 +91,15 @@ foreach ($templates as $name => $body) {
 
 $keys = ['p256dh' => 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U', 'auth' => 'tBHItJI5svbpez7KI4CCXg'];
 
+// A previous run in the same minute spends this address's budgets (the burst checks do so on
+// purpose); start each run with them full, for every address the requests might come from.
+foreach (['push', 'events'] as $bucket) {
+    foreach (['127.0.0.1', '::1', gethostbyname(gethostname())] as $ip) {
+        Craft::$app->getCache()->delete(sprintf('pwa:rate:%s:%s:%d', $bucket, sha1(justinholtweb\pwa\helpers\RateLimit::key($ip)), intdiv(time(), 60)));
+    }
+    Craft::$app->getCache()->delete(sprintf('pwa:rate:%s:*:%d', $bucket, intdiv(time(), 60)));
+}
+
 $http = new Client(['base_uri' => 'http://localhost/', 'cookies' => new CookieJar(), 'http_errors' => false, 'allow_redirects' => false]);
 $subscribe = static fn(string $endpoint, array $topics = []) => $http->post('index.php?p=actions/pwa/push/subscribe', [
     'headers' => ['Accept' => 'application/json'],
@@ -230,6 +239,28 @@ check('recording events is rate limited per address', function() use ($http) {
     ]));
 
     return in_array(429, $statuses, true) && in_array(200, $statuses, true) ?: implode(',', array_unique($statuses));
+});
+
+check('many addresses together still hit one ceiling for the site', function() use ($http) {
+    // Stand in for a crowd of addresses: fill the site-wide budget for events, clear this
+    // address's own, and a request that is well within its own budget is still refused.
+    $minute = intdiv(time(), 60);
+    $global = sprintf('pwa:rate:events:*:%d', $minute);
+    $cache = Craft::$app->getCache();
+    foreach (['127.0.0.1', '::1', gethostbyname(gethostname())] as $ip) {
+        $cache->delete(sprintf('pwa:rate:events:%s:%d', sha1(justinholtweb\pwa\helpers\RateLimit::key($ip)), $minute));
+    }
+    $cache->set($global, EventsController::PER_MINUTE * justinholtweb\pwa\helpers\RateLimit::GLOBAL_FACTOR, 120);
+    $post = fn() => $http->post('index.php?p=actions/pwa/events/record', ['headers' => ['Accept' => 'application/json'], 'form_params' => ['type' => 'offline', 'path' => '/']])->getStatusCode();
+
+    $full = $post();
+    $cache->delete($global);
+    foreach (['127.0.0.1', '::1', gethostbyname(gethostname())] as $ip) {
+        $cache->delete(sprintf('pwa:rate:events:%s:%d', sha1(justinholtweb\pwa\helpers\RateLimit::key($ip)), $minute));
+    }
+    $clear = $post();
+
+    return $full === 429 && $clear === 200 ?: "with the ceiling full $full, after clearing $clear";
 });
 
 // -------------------------------------------------------------------------------------------
@@ -409,6 +440,37 @@ check('changing Client-IP / X-Forwarded-For does not buy a new rate-limit budget
     });
 
     return in_array(429, $statuses, true) ?: implode(',', $statuses);
+});
+
+check('a signed-in user can run preflight a few times a minute, then is told to wait', function() use ($cp, $cpToken, $admin) {
+    Craft::$app->getCache()->delete(sprintf('pwa:rate:preflight:user:%s:%d', sha1((string)$admin->id), intdiv(time(), 60)));
+    $results = [];
+    for ($i = 0; $i <= justinholtweb\pwa\controllers\PreflightController::RUNS_PER_MINUTE; $i++) {
+        $body = json_decode((string)$cp->post('admin/actions/pwa/preflight/run', [
+            'headers' => ['Accept' => 'application/json'],
+            'form_params' => ['CRAFT_CSRF_TOKEN' => $cpToken],
+        ])->getBody(), true);
+        $results[] = isset($body['auditId']) ? 'ran' : 'refused';
+    }
+    Craft::$app->getCache()->delete(sprintf('pwa:rate:preflight:user:%s:%d', sha1((string)$admin->id), intdiv(time(), 60)));
+
+    return array_count_values($results) === ['ran' => justinholtweb\pwa\controllers\PreflightController::RUNS_PER_MINUTE, 'refused' => 1] ?: json_encode($results);
+});
+
+check('…and test sends are budgeted per user the same way', function() use ($cp, $cpToken, $admin) {
+    $key = sprintf('pwa:rate:push-test:user:%s:%d', sha1((string)$admin->id), intdiv(time(), 60));
+    Craft::$app->getCache()->delete($key);
+    $codes = [];
+    for ($i = 0; $i <= justinholtweb\pwa\controllers\BroadcastController::TEST_PER_MINUTE; $i++) {
+        // No such campaign: within budget that's a 404; over it, the budget answers first.
+        $codes[] = $cp->post('admin/actions/pwa/broadcast/test', [
+            'headers' => ['Accept' => 'application/json'],
+            'form_params' => ['CRAFT_CSRF_TOKEN' => $cpToken, 'campaignId' => 0, 'endpoint' => 'https://push.example/x'],
+        ])->getStatusCode();
+    }
+    Craft::$app->getCache()->delete($key);
+
+    return array_count_values($codes) === [404 => justinholtweb\pwa\controllers\BroadcastController::TEST_PER_MINUTE, 400 => 1] ?: json_encode(array_count_values($codes));
 });
 
 echo "\n$passed passed, $failed failed\n";

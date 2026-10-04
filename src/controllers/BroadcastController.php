@@ -5,6 +5,7 @@ namespace justinholtweb\pwa\controllers;
 use Craft;
 use craft\helpers\DateTimeHelper;
 use craft\web\Controller;
+use justinholtweb\pwa\helpers\RateLimit;
 use justinholtweb\pwa\models\Campaign;
 use justinholtweb\pwa\Plugin;
 use yii\web\ForbiddenHttpException;
@@ -21,6 +22,9 @@ use yii\web\Response;
  */
 class BroadcastController extends Controller
 {
+    /** Test sends one user may make per minute. */
+    public const TEST_PER_MINUTE = 10;
+
     public function beforeAction($action): bool
     {
         if (!parent::beforeAction($action)) {
@@ -171,6 +175,11 @@ class BroadcastController extends Controller
     {
         $this->requirePostRequest();
         $this->requireAcceptsJson();
+
+        // Each press is a real request to a push service, on the site's VAPID key.
+        if (!RateLimit::allowFor('push-test', (string)Craft::$app->getUser()->getId(), self::TEST_PER_MINUTE)) {
+            return $this->asFailure(Craft::t('pwa', 'That’s a lot of test sends. Try again in a minute.'));
+        }
 
         $plugin = Plugin::getInstance();
         $campaign = $plugin->campaigns->getCampaignById((int)$this->request->getRequiredBodyParam('campaignId'));
