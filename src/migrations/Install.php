@@ -6,12 +6,14 @@ use craft\db\Migration;
 use craft\db\Table;
 
 /**
- * Six tables, in three groups.
+ * Seven tables, in four groups.
  *
  * Configuration is not among them: the manifest, the flight plan and the prompt live in project
  * config so they deploy with the code that assumes them. What lands in the database is everything
  * that is *observed* rather than decided — audits, devices, broadcasts and their outcomes — plus
- * the one secret that must never be in project config, which is the VAPID keypair.
+ * the one secret that must never be in project config, which is the VAPID keypair, and the small
+ * amount of runtime state (the cache-invalidation counter) that changes on environments where
+ * project config is read-only.
  */
 class Install extends Migration
 {
@@ -23,6 +25,7 @@ class Install extends Migration
         $this->createDeliveries();
         $this->createEvents();
         $this->createKeys();
+        $this->createState();
 
         return true;
     }
@@ -35,6 +38,7 @@ class Install extends Migration
         $this->dropTableIfExists('{{%pwa_events}}');
         $this->dropTableIfExists('{{%pwa_audits}}');
         $this->dropTableIfExists('{{%pwa_keys}}');
+        $this->dropTableIfExists('{{%pwa_state}}');
 
         return true;
     }
@@ -62,6 +66,11 @@ class Install extends Migration
         ]);
 
         $this->createIndex(null, '{{%pwa_audits}}', ['siteId', 'dateCreated'], false);
+
+        // Garbage collection deletes by age across every site, and the scheduled check asks for
+        // the newest audit of one trigger; neither can use an index that starts with siteId.
+        $this->createIndex(null, '{{%pwa_audits}}', ['dateCreated'], false);
+        $this->createIndex(null, '{{%pwa_audits}}', ['trigger', 'dateCreated'], false);
         $this->addForeignKey(null, '{{%pwa_audits}}', ['siteId'], Table::SITES, ['id'], 'CASCADE', null);
     }
 
@@ -135,6 +144,9 @@ class Install extends Migration
 
         $this->createIndex(null, '{{%pwa_campaigns}}', ['status', 'dateScheduled'], false);
         $this->createIndex(null, '{{%pwa_campaigns}}', ['dateCreated'], false);
+        $this->createIndex(null, '{{%pwa_campaigns}}', ['siteId'], false);
+        $this->createIndex(null, '{{%pwa_campaigns}}', ['entryId'], false);
+        $this->createIndex(null, '{{%pwa_campaigns}}', ['createdBy'], false);
 
         $this->addForeignKey(null, '{{%pwa_campaigns}}', ['siteId'], Table::SITES, ['id'], 'CASCADE', null);
         $this->addForeignKey(null, '{{%pwa_campaigns}}', ['entryId'], Table::ELEMENTS, ['id'], 'SET NULL', null);
@@ -160,6 +172,8 @@ class Install extends Migration
         ]);
 
         $this->createIndex(null, '{{%pwa_deliveries}}', ['campaignId', 'status'], false);
+        $this->createIndex(null, '{{%pwa_deliveries}}', ['subscriberId'], false);
+        $this->createIndex(null, '{{%pwa_deliveries}}', ['dateCreated'], false);
 
         $this->addForeignKey(null, '{{%pwa_deliveries}}', ['campaignId'], '{{%pwa_campaigns}}', ['id'], 'CASCADE', null);
         $this->addForeignKey(null, '{{%pwa_deliveries}}', ['subscriberId'], '{{%pwa_subscribers}}', ['id'], 'SET NULL', null);
@@ -184,6 +198,7 @@ class Install extends Migration
 
         $this->createIndex(null, '{{%pwa_events}}', ['type', 'dateCreated'], false);
         $this->createIndex(null, '{{%pwa_events}}', ['siteId'], false);
+        $this->createIndex(null, '{{%pwa_events}}', ['dateCreated'], false);
 
         $this->addForeignKey(null, '{{%pwa_events}}', ['siteId'], Table::SITES, ['id'], 'CASCADE', null);
     }
@@ -202,5 +217,23 @@ class Install extends Migration
             'dateUpdated' => $this->dateTime()->notNull(),
             'uid' => $this->uid(),
         ]);
+    }
+
+    private function createState(): void
+    {
+        // Runtime state, one row per key. It lives here rather than in project config because it
+        // changes in production — the "invalidate caches" button has to work on an environment
+        // where admin changes are off — and rather than in the data cache because a cache flush
+        // must not quietly reset it and hand every visitor's worker a cache name it already used.
+        $this->createTable('{{%pwa_state}}', [
+            'id' => $this->primaryKey(),
+            'name' => $this->string(64)->notNull(),
+            'value' => $this->text(),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid' => $this->uid(),
+        ]);
+
+        $this->createIndex(null, '{{%pwa_state}}', ['name'], true);
     }
 }

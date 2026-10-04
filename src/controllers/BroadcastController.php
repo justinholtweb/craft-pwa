@@ -28,7 +28,7 @@ class BroadcastController extends Controller
         }
 
         if (!Plugin::getInstance()->isPro()) {
-            throw new ForbiddenHttpException('Push notifications require PWA Pro.');
+            throw new ForbiddenHttpException(Craft::t('pwa', 'Push notifications require PWA Pro.'));
         }
 
         $this->requirePermission(Plugin::PERMISSION_BROADCAST);
@@ -40,7 +40,7 @@ class BroadcastController extends Controller
     {
         $plugin = Plugin::getInstance();
 
-        return $this->renderTemplate('pwa/broadcast/index', [
+        return $this->renderTemplate('pwa/_broadcast/index', [
             'campaigns' => $plugin->campaigns->getCampaigns(null, 50),
             'subscribers' => $plugin->push->countSubscribers(),
             'pushEnabled' => $plugin->getSettings()->pushEnabled,
@@ -61,10 +61,11 @@ class BroadcastController extends Controller
             throw new NotFoundHttpException();
         }
 
-        return $this->renderTemplate('pwa/broadcast/edit', [
+        return $this->renderTemplate('pwa/_broadcast/edit', [
             'campaign' => $campaign,
             'sites' => Craft::$app->getSites()->getAllSites(),
-            'subscribers' => $plugin->push->countSubscribers($campaign->siteId),
+            'subscribers' => $plugin->push->countMatching($campaign->siteId, $campaign->topics),
+            'confirmWord' => self::sendWord(),
             'breakdown' => $campaign->id ? $plugin->campaigns->getDeliveryBreakdown($campaign->id) : [],
             'isNew' => $campaign->id === null,
         ]);
@@ -87,7 +88,7 @@ class BroadcastController extends Controller
         // A campaign that has been sent is a record of something that happened. Editing it would
         // make the record describe a message nobody received.
         if ($campaign->status === Campaign::STATUS_SENT || $campaign->status === Campaign::STATUS_SENDING) {
-            throw new ForbiddenHttpException('A campaign that has been sent cannot be edited.');
+            throw new ForbiddenHttpException(Craft::t('pwa', 'A campaign that has been sent cannot be edited.'));
         }
 
         $siteId = $request->getBodyParam('siteId');
@@ -136,8 +137,10 @@ class BroadcastController extends Controller
 
         // The typed confirmation is checked here as well as in the template. A destructive action
         // whose only guard is in the markup is an action with no guard.
-        if (trim((string)$this->request->getBodyParam('confirm', '')) !== 'SEND') {
-            return $this->asFailure(Craft::t('pwa', 'Type SEND to confirm.'));
+        $word = self::sendWord();
+
+        if (mb_strtolower(trim((string)$this->request->getBodyParam('confirm', ''))) !== mb_strtolower($word)) {
+            return $this->asFailure(Craft::t('pwa', 'Type “{word}” to confirm.', ['word' => $word]));
         }
 
         if ($campaign->status === Campaign::STATUS_SENT || $campaign->status === Campaign::STATUS_SENDING) {
@@ -153,7 +156,7 @@ class BroadcastController extends Controller
         }
 
         return $this->asSuccess(
-            Craft::t('pwa', 'Queued for {count} device(s).', ['count' => $campaign->targeted]),
+            Craft::t('pwa', 'Queued for {count, plural, =1{# device} other{# devices}}.', ['count' => $campaign->targeted]),
             redirect: 'pwa/broadcast/' . $campaign->id,
         );
     }
@@ -176,15 +179,8 @@ class BroadcastController extends Controller
             throw new NotFoundHttpException();
         }
 
-        $endpoint = (string)$this->request->getRequiredBodyParam('endpoint');
-        $subscriber = null;
-
-        foreach ($plugin->push->getSubscribers() as $candidate) {
-            if ($candidate->endpoint === $endpoint) {
-                $subscriber = $candidate;
-                break;
-            }
-        }
+        $endpoint = trim((string)$this->request->getRequiredBodyParam('endpoint'));
+        $subscriber = $plugin->push->getSubscriberByEndpointHash(hash('sha256', $endpoint));
 
         if ($subscriber === null) {
             return $this->asFailure(Craft::t('pwa', 'That device is not subscribed. Subscribe from the front end first.'));
@@ -206,25 +202,42 @@ class BroadcastController extends Controller
     {
         $this->requirePostRequest();
 
-        Plugin::getInstance()->campaigns->delete((int)$this->request->getRequiredBodyParam('campaignId'));
+        $campaignId = (int)$this->request->getRequiredBodyParam('campaignId');
+        $campaign = Plugin::getInstance()->campaigns->getCampaignById($campaignId);
+
+        if ($campaign === null) {
+            throw new NotFoundHttpException();
+        }
+
+        // Its batches are still on the queue and read the campaign as they go; deleting it
+        // mid-send loses the record of a message that is reaching devices right now.
+        if ($campaign->status === Campaign::STATUS_SENDING) {
+            return $this->asFailure(Craft::t('pwa', 'That broadcast is still sending. Delete it once it has finished.'));
+        }
+
+        if (!Plugin::getInstance()->campaigns->delete($campaignId)) {
+            return $this->asFailure(Craft::t('pwa', 'Couldn’t delete the broadcast.'));
+        }
 
         return $this->asSuccess(Craft::t('pwa', 'Broadcast deleted.'), redirect: 'pwa/broadcast');
+    }
+
+    /**
+     * The word typed to confirm a send. Translated, and used by both the template and the check
+     * here, so a translated screen never asks for one word and accepts another.
+     */
+    public static function sendWord(): string
+    {
+        return Craft::t('pwa', 'SEND');
     }
 
     public function actionSubscribers(): Response
     {
         $plugin = Plugin::getInstance();
         $subscribers = $plugin->push->getSubscribers(null, [], 0, 200);
-        $byService = [];
+        $byService = $plugin->push->countByService();
 
-        foreach ($subscribers as $subscriber) {
-            $service = $subscriber->getService();
-            $byService[$service] = ($byService[$service] ?? 0) + 1;
-        }
-
-        arsort($byService);
-
-        return $this->renderTemplate('pwa/broadcast/subscribers', [
+        return $this->renderTemplate('pwa/_broadcast/subscribers', [
             'subscribers' => $subscribers,
             'total' => $plugin->push->countSubscribers(),
             'byService' => $byService,

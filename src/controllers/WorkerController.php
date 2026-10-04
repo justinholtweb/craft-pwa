@@ -45,7 +45,7 @@ class WorkerController extends Controller
         $headers = $response->getHeaders();
         $headers->set('Content-Type', 'text/javascript; charset=UTF-8');
         $headers->set('Cache-Control', 'no-cache, no-store, must-revalidate');
-        $headers->set('Service-Worker-Allowed', Plugin::getInstance()->getSettings()->getManifest($site->uid)->getEffectiveScope());
+        $headers->set('Service-Worker-Allowed', Plugin::getInstance()->manifests->forSite($site)->getEffectiveScope());
         $headers->set('X-Content-Type-Options', 'nosniff');
 
         return $response;
@@ -61,7 +61,7 @@ class WorkerController extends Controller
     public function actionOffline(): Response
     {
         $site = Craft::$app->getSites()->getCurrentSite();
-        $manifest = Plugin::getInstance()->getSettings()->getManifest($site->uid);
+        $manifest = Plugin::getInstance()->manifests->forSite($site);
 
         $response = $this->renderTemplate('pwa/_offline', [
             'manifest' => $manifest,
@@ -82,10 +82,9 @@ class WorkerController extends Controller
      */
     public function actionFile(string $path): Response
     {
-        $base = FileHelper::normalizePath(Files::basePath());
-        $target = FileHelper::normalizePath($base . DIRECTORY_SEPARATOR . $path);
+        $target = Files::within(Files::basePath(), $path);
 
-        if (!str_starts_with($target, $base . DIRECTORY_SEPARATOR) || !is_file($target)) {
+        if ($target === null || !is_file($target)) {
             throw new NotFoundHttpException();
         }
 

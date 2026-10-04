@@ -52,13 +52,13 @@ class Subscriber extends Model
     public ?DateTime $dateLastSeen = null;
     public ?DateTime $dateCreated = null;
 
-    public function rules(): array
+    protected function defineRules(): array
     {
-        return [
+        return array_merge(parent::defineRules(), [
             [['endpoint', 'p256dh', 'auth'], 'required'],
             [['endpoint'], 'url', 'defaultScheme' => 'https'],
             [['endpoint'], 'string', 'max' => 1000],
-        ];
+        ]);
     }
 
     /** The push service a subscription belongs to — FCM, Mozilla, WNS — for the CP breakdown. */

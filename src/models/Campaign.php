@@ -68,9 +68,9 @@ class Campaign extends Model
     public ?int $createdBy = null;
     public ?DateTime $dateCreated = null;
 
-    public function rules(): array
+    protected function defineRules(): array
     {
-        return [
+        return array_merge(parent::defineRules(), [
             [['title'], 'required'],
             [['title'], 'string', 'max' => 120],
             [['body'], 'string', 'max' => 400],
@@ -81,7 +81,7 @@ class Campaign extends Model
                 self::STATUS_SENT,
                 self::STATUS_FAILED,
             ]],
-        ];
+        ]);
     }
 
     public function getEntry(): ?Entry

@@ -6,6 +6,7 @@ use Craft;
 use craft\queue\BaseJob;
 use justinholtweb\pwa\models\Campaign;
 use justinholtweb\pwa\Plugin;
+use yii\queue\RetryableJobInterface;
 
 /**
  * Sends one batch of a broadcast, then queues the next.
@@ -15,10 +16,18 @@ use justinholtweb\pwa\Plugin;
  * visible in Craft's queue rather than in a log file, and a job that dies takes one batch with it
  * instead of the whole send.
  */
-class BroadcastJob extends BaseJob
+class BroadcastJob extends BaseJob implements RetryableJobInterface
 {
+    /** Seconds one push may take before Guzzle gives up on it — see Push::send(). */
+    private const PUSH_TIMEOUT = 10;
+
     public int $campaignId;
-    public int $offset = 0;
+
+    /** The last subscriber ID the previous batch walked; this batch starts after it. */
+    public int $afterId = 0;
+
+    /** Rows walked by earlier batches, for the progress bar. */
+    public int $walked = 0;
 
     public function execute($queue): void
     {
@@ -30,33 +39,56 @@ class BroadcastJob extends BaseJob
             return;
         }
 
-        $batch = max(1, $plugin->getSettings()->pushBatchSize);
+        $batch = $this->batchSize();
         $this->setProgress(
             $queue,
-            $campaign->targeted > 0 ? min(1, $this->offset / $campaign->targeted) : 1,
-            Craft::t('pwa', '{done} of {total}', ['done' => $this->offset, 'total' => $campaign->targeted]),
+            $campaign->targeted > 0 ? min(1, $this->walked / max(1, $plugin->push->countSubscribers($campaign->siteId))) : 1,
+            Craft::t('pwa', '{done} of {total}', ['done' => $this->walked, 'total' => $campaign->targeted]),
         );
 
-        $sent = $plugin->campaigns->deliverBatch($campaign, $this->offset, $batch);
+        $result = $plugin->campaigns->deliverBatch($campaign, $this->afterId, $batch);
 
-        if ($sent < $batch) {
+        // A short page is the end of the list. Not "sent fewer than a batch" — with topics, a full
+        // page can match nobody, and stopping there would leave everyone after it unsent.
+        if ($result['walked'] < $batch) {
             $plugin->campaigns->finish($campaign);
             return;
         }
 
-        // The offset does not advance by the number *sent* but by the number *walked*, because
-        // devices dropped mid-send shift the list underneath us. Walking by a fixed stride can
-        // skip a device; the alternative — an ever-shifting cursor — can send twice. Skipping one
-        // notification is the better failure, and a subscriber dropped for being gone was never
-        // going to receive it anyway.
         Craft::$app->getQueue()->push(new self([
             'campaignId' => $this->campaignId,
-            'offset' => $this->offset + $sent,
+            'afterId' => $result['lastId'],
+            'walked' => $this->walked + $result['walked'],
         ]));
+    }
+
+    /**
+     * Long enough for every push in the batch to time out, plus room for the bookkeeping.
+     *
+     * The queue's default is five minutes, and a hundred devices on a push service that has
+     * stopped answering is a thousand seconds — the job would be killed mid-batch and retried.
+     */
+    public function getTtr(): int
+    {
+        return $this->batchSize() * self::PUSH_TIMEOUT + 120;
+    }
+
+    /**
+     * Never retried. A retry resends the whole batch, and the devices that already received it
+     * would get the notification twice; a notification cannot be recalled.
+     */
+    public function canRetry($attempt, $error): bool
+    {
+        return false;
     }
 
     protected function defaultDescription(): ?string
     {
         return Craft::t('pwa', 'Broadcasting a notification');
+    }
+
+    private function batchSize(): int
+    {
+        return max(1, Plugin::getInstance()->getSettings()->pushBatchSize);
     }
 }

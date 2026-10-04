@@ -4,7 +4,9 @@ namespace justinholtweb\pwa\services;
 
 use Craft;
 use craft\base\Component;
+use craft\db\Query;
 use craft\helpers\App;
+use craft\helpers\DateTimeHelper;
 use craft\helpers\Db;
 use craft\helpers\Json;
 use craft\models\Site;
@@ -47,7 +49,7 @@ class Preflight extends Component
         $site ??= Craft::$app->getSites()->getPrimarySite();
         $plugin = Plugin::getInstance();
         $settings = $plugin->getSettings();
-        $manifest = $settings->getManifest($site->uid);
+        $manifest = $plugin->manifests->forSite($site);
 
         $checks = [];
 
@@ -181,7 +183,7 @@ class Preflight extends Component
                 Check::GROUP_DELIVERY,
                 Craft::t('pwa', 'Dev mode'),
                 Craft::t('pwa', 'Dev mode is on. A registered service worker will keep serving cached responses while you edit templates.'),
-                Craft::t('pwa', 'If a change is not showing up, use the “Unregister worker” button on the flight deck rather than a hard refresh.'),
+                Craft::t('pwa', 'If a change is not showing up, unregister the worker in your browser’s developer tools (Application → Service workers → Unregister) rather than relying on a hard refresh.'),
             );
         }
 
@@ -270,7 +272,7 @@ class Preflight extends Component
                 Check::GROUP_MANIFEST,
                 Craft::t('pwa', 'Display mode'),
                 Craft::t('pwa', 'Display is “browser”, which tells the browser this is a website and not an app.'),
-                Craft::t('pwa', 'Set it to standalone in Settings → Manifest. Nothing will offer to install while it is browser.'),
+                Craft::t('pwa', 'Set it to standalone in PWA → Manifest. Nothing will offer to install while it is browser.'),
                 true,
             );
         } else {
@@ -286,9 +288,19 @@ class Preflight extends Component
         // works, but every single launch pays for it, and it is almost always an accident —
         // a trailing slash, or an http URL kept from before the site had a certificate.
         $startUrl = (string)($data['start_url'] ?? '/');
-        $start = $this->fetch($this->absolute($startUrl, $site), false);
+        $startAbsolute = $this->absolute($startUrl, $site);
+        $start = $startAbsolute !== null ? $this->fetch($startAbsolute, false) : null;
 
-        if ($start === null) {
+        if ($startAbsolute === null) {
+            $checks[] = Check::fail(
+                'start-url',
+                Check::GROUP_MANIFEST,
+                Craft::t('pwa', 'Start URL'),
+                Craft::t('pwa', 'The start URL {url} is on another origin.', ['url' => $startUrl]),
+                Craft::t('pwa', 'A manifest’s start URL must be on the same origin as the site, or the browser discards it. Use a path such as /.'),
+                true,
+            );
+        } elseif ($start === null) {
             $checks[] = Check::warn(
                 'start-url',
                 Check::GROUP_MANIFEST,
@@ -352,7 +364,7 @@ class Preflight extends Component
                     Check::GROUP_MANIFEST,
                     $label,
                     Craft::t('pwa', 'Not set, so the OS picks one.'),
-                    Craft::t('pwa', 'Set it in Settings → Manifest. The theme colour paints the title bar; the background colour is what shows while the app is starting.'),
+                    Craft::t('pwa', 'Set it in PWA → Manifest. The theme colour paints the title bar; the background colour is what shows while the app is starting.'),
                 );
             }
         }
@@ -374,7 +386,7 @@ class Preflight extends Component
                 Check::GROUP_ICONS,
                 Craft::t('pwa', 'Icon source'),
                 Craft::t('pwa', 'No source image has been chosen, so the manifest lists no icons.'),
-                Craft::t('pwa', 'Pick a square image of at least 512×512 in Settings → Manifest. Everything else is generated from it.'),
+                Craft::t('pwa', 'Pick a square image of at least 512×512 in PWA → Manifest. Everything else is generated from it.'),
                 true,
             )];
         }
@@ -424,7 +436,8 @@ class Preflight extends Component
         } else {
             // Listed is not the same as reachable — this is the check that catches an icon
             // directory that was never deployed.
-            $probe = $this->fetch($this->absolute((string)$icons[0]['src'], $site));
+            $iconUrl = $this->absolute((string)$icons[0]['src'], $site);
+            $probe = $iconUrl !== null ? $this->fetch($iconUrl) : null;
 
             if ($probe === null || $probe['status'] !== 200) {
                 $checks[] = Check::fail(
@@ -795,6 +808,23 @@ class Preflight extends Component
         return array_map(fn(AuditRecord $r) => $this->toModel($r), $query->all());
     }
 
+    /**
+     * When the scheduled check last ran, whatever has run since.
+     *
+     * Asked of the database directly: reading it off the most recent handful of audits misses it
+     * as soon as twenty manual and console runs have happened in between, and the schedule then
+     * fires on every hourly check until one more scheduled run pushes it back into view.
+     */
+    public function getLastScheduledAt(): ?DateTime
+    {
+        $value = (new Query())
+            ->from(AuditRecord::tableName())
+            ->where(['trigger' => 'scheduled'])
+            ->max('[[dateCreated]]');
+
+        return $value ? (DateTimeHelper::toDateTime($value) ?: null) : null;
+    }
+
     public function getAuditById(int $id): ?Audit
     {
         $record = AuditRecord::findOne($id);
@@ -863,20 +893,30 @@ class Preflight extends Component
             'headers' => [
                 // Announced honestly. A check that pretends to be Chrome gets Chrome's version of
                 // the page, which is not the thing being checked.
-                'User-Agent' => 'Craft-PWA-Preflight/1.0 (+https://craft-pwa.com)',
+                'User-Agent' => 'Craft-PWA-Preflight/1.0 (+https://justinholt.com/plugins/craft-pwa)',
                 'Accept' => '*/*',
             ],
             'verify' => !Craft::$app->getConfig()->getGeneral()->devMode,
         ]);
     }
 
-    private function absolute(string $url, Site $site): string
+    /**
+     * A URL from the manifest, made absolute against the site — or null if it points at another
+     * origin.
+     *
+     * The manifest is the one input here that came from a form, and the checks fetch whatever it
+     * says from the server. Refusing anything off-site keeps "run preflight" from being a way to
+     * make the server request an arbitrary URL.
+     */
+    private function absolute(string $url, Site $site): ?string
     {
-        if (str_contains($url, '://')) {
-            return $url;
+        $base = (string)App::parseEnv($site->getBaseUrl());
+
+        if (str_contains($url, '://') || str_starts_with($url, '//')) {
+            return \justinholtweb\pwa\models\Manifest::isSameOrigin($url, $base) ? $url : null;
         }
 
-        return rtrim((string)App::parseEnv($site->getBaseUrl()), '/') . '/' . ltrim($url, '/');
+        return rtrim($base, '/') . '/' . ltrim($url, '/');
     }
 
     private function toModel(AuditRecord $record): Audit
@@ -895,7 +935,7 @@ class Preflight extends Component
             'failed' => (int)$record->failed,
             'skipped' => (int)$record->skipped,
             'checks' => array_map(static fn(array $c) => new Check($c), $decoded),
-            'dateCreated' => $record->dateCreated ? new DateTime($record->dateCreated) : null,
+            'dateCreated' => $record->dateCreated ? (DateTimeHelper::toDateTime($record->dateCreated) ?: null) : null,
         ]);
     }
 }

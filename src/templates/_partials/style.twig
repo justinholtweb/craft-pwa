@@ -1,148 +1,119 @@
 {# Inlined rather than an asset bundle: an asset bundle means remembering `clear-caches/cp-resources`
-   every time a rule changes, in exchange for saving one small style block per page. #}
+   every time a rule changes, in exchange for saving one small style block per page.
+   Colours, borders, radii and spacing are Craft's own tokens, so the screens follow the CP theme. #}
 {% css %}
     .pwa-cards {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 14px;
-        margin-bottom: 24px;
+        grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+        gap: var(--m);
+        margin-bottom: var(--xl);
     }
     .pwa-card {
-        background: var(--gray-050, #f3f7fc);
-        border: 1px solid var(--hairline-color, rgba(51, 64, 77, 0.1));
-        border-radius: var(--large-border-radius, 8px);
-        padding: 14px 16px;
+        background: var(--gray-050);
+        border: 1px solid var(--border-hairline);
+        border-radius: var(--radius-lg);
+        padding: var(--m) var(--l);
     }
-    .pwa-card h4 {
-        margin: 0 0 4px;
-        font-size: 12px;
+    .pwa-card h2 {
+        margin: 0 0 var(--xs);
+        font-size: 0.75rem;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        color: var(--medium-text-color, #606d7b);
+        color: var(--fg-subtle);
     }
-    .pwa-figure { font-size: 26px; line-height: 1.15; font-weight: 500; }
-    .pwa-sub { font-size: 12px; color: var(--medium-text-color, #606d7b); }
-    .pwa-panel {
-        border: 1px solid var(--hairline-color, rgba(51, 64, 77, 0.1));
-        border-radius: var(--large-border-radius, 8px);
-        padding: 18px 20px;
-        margin-bottom: 20px;
-        background: var(--white, #fff);
-    }
-    .pwa-panel > h2:first-child, .pwa-panel > h3:first-child { margin-top: 0; }
+    .pwa-figure { font-size: 1.625rem; line-height: 1.15; font-weight: 500; }
+    .pwa-sub { font-size: 0.8125rem; color: var(--fg-subtle); }
+    .pane > h2:first-child, .pane > h3:first-child { margin-top: 0; }
 
     /* The score dial. A number people read in one glance, so it gets one colour and no chrome. */
     .pwa-score {
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: var(--l);
     }
     .pwa-score__value {
-        font-size: 44px;
+        font-size: 2.75rem;
         font-weight: 500;
         line-height: 1;
         font-variant-numeric: tabular-nums;
     }
-    .pwa-score--good .pwa-score__value { color: var(--success-color, #27ab83); }
-    .pwa-score--fair .pwa-score__value { color: var(--pending-color, #d9822b); }
-    .pwa-score--poor .pwa-score__value { color: var(--error-color, #cf1124); }
+    .pwa-score--good .pwa-score__value { color: var(--fg-success); }
+    .pwa-score--fair .pwa-score__value { color: var(--fg-warning); }
+    .pwa-score--poor .pwa-score__value { color: var(--fg-error); }
 
     .pwa-check {
         display: flex;
-        gap: 12px;
-        padding: 12px 0;
-        border-top: 1px solid var(--hairline-color, rgba(51, 64, 77, 0.1));
+        gap: var(--m);
+        padding: var(--m) 0;
+        border-top: 1px solid var(--border-hairline);
         align-items: flex-start;
     }
     .pwa-check:first-of-type { border-top: 0; }
     .pwa-check__mark {
         flex: 0 0 auto;
-        width: 20px;
-        height: 20px;
+        width: 1.25rem;
+        height: 1.25rem;
         border-radius: 50%;
         display: grid;
         place-items: center;
-        font-size: 12px;
+        font-size: 0.75rem;
         font-weight: 700;
-        color: #fff;
         margin-top: 1px;
     }
-    .pwa-check--pass .pwa-check__mark { background: var(--success-color, #27ab83); }
-    .pwa-check--warn .pwa-check__mark { background: var(--pending-color, #d9822b); }
-    .pwa-check--fail .pwa-check__mark { background: var(--error-color, #cf1124); }
-    .pwa-check--skip .pwa-check__mark { background: var(--gray-300, #b9c1c9); }
+    /* Tinted backgrounds with the matching foreground: the mark reads at AA contrast, and the
+       status is also spelled out in visually-hidden text, so colour is never the only signal. */
+    .pwa-check--pass .pwa-check__mark { background: var(--bg-success); color: var(--fg-success); }
+    .pwa-check--warn .pwa-check__mark { background: var(--bg-warning); color: var(--fg-warning); }
+    .pwa-check--fail .pwa-check__mark { background: var(--bg-error); color: var(--fg-error); }
+    .pwa-check--skip .pwa-check__mark { background: var(--gray-100); color: var(--fg-subtle); }
     .pwa-check__label { font-weight: 500; }
-    .pwa-check__summary { color: var(--medium-text-color, #606d7b); }
+    .pwa-check__label .badge { margin-inline-start: var(--s); vertical-align: middle; }
+    .pwa-check__summary { color: var(--fg-subtle); }
     .pwa-check__fix {
-        margin-top: 4px;
-        padding: 8px 10px;
-        background: var(--gray-050, #f3f7fc);
-        border-radius: 4px;
-        font-size: 13px;
-    }
-    .pwa-check__blocking {
-        display: inline-block;
-        margin-left: 6px;
-        padding: 1px 6px;
-        border-radius: 9px;
-        background: var(--error-color, #cf1124);
-        color: #fff;
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        vertical-align: middle;
+        margin-top: var(--xs);
+        padding: var(--s) var(--m);
+        background: var(--gray-050);
+        border-radius: var(--radius-md);
+        font-size: 0.8125rem;
     }
 
     .pwa-group-heading {
-        margin: 22px 0 6px;
-        font-size: 12px;
+        margin: var(--xl) 0 var(--xs);
+        font-size: 0.75rem;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        color: var(--medium-text-color, #606d7b);
+        color: var(--fg-subtle);
     }
 
-    .pwa-icons { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+    .pwa-icons { display: flex; flex-wrap: wrap; gap: var(--m); align-items: flex-end; }
     .pwa-icons figure { margin: 0; text-align: center; }
     .pwa-icons img {
-        border: 1px solid var(--hairline-color, rgba(51, 64, 77, 0.1));
-        border-radius: 8px;
-        background: repeating-conic-gradient(#f4f5f7 0 25%, #fff 0 50%) 50% / 12px 12px;
+        border: 1px solid var(--border-hairline);
+        border-radius: var(--radius-lg);
+        background: repeating-conic-gradient(var(--gray-100) 0 25%, var(--white) 0 50%) 50% / 12px 12px;
     }
-    .pwa-icons figcaption { font-size: 11px; color: var(--medium-text-color, #606d7b); margin-top: 4px; }
+    .pwa-icons figcaption { font-size: 0.75rem; color: var(--fg-subtle); margin-top: var(--xs); }
 
-    /* The flight plan reads top to bottom, first match wins, so it is numbered like one. */
-    .pwa-routes { width: 100%; border-collapse: collapse; }
-    .pwa-routes th {
-        text-align: left;
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: var(--medium-text-color, #606d7b);
-        padding: 0 10px 6px 0;
-    }
-    .pwa-routes td { padding: 8px 10px 8px 0; border-top: 1px solid var(--hairline-color, rgba(51, 64, 77, 0.1)); vertical-align: top; }
-    .pwa-routes code { font-size: 12px; }
-    .pwa-routes .pwa-order {
-        width: 22px;
-        color: var(--medium-text-color, #606d7b);
-        font-variant-numeric: tabular-nums;
-    }
+    .pwa-order { width: 1.5rem; color: var(--fg-subtle); font-variant-numeric: tabular-nums; }
 
-    .pwa-sparkline { display: flex; align-items: flex-end; gap: 2px; height: 42px; margin-top: 8px; }
+    .pwa-sparkline { display: flex; align-items: flex-end; gap: 2px; height: 2.625rem; margin-top: var(--s); }
     .pwa-sparkline span {
         flex: 1 1 0;
-        background: var(--link-color, #0b69a3);
+        background: var(--blue-600);
         border-radius: 1px 1px 0 0;
         min-height: 1px;
-        opacity: 0.85;
     }
+    {# The sparkline is drawn from data-* heights, not inline styles: one rule per tenth. #}
+    {% for i in 0..10 %}
+        .pwa-sparkline span[data-h="{{ i }}"] { height: {{ i * 10 }}%; }
+    {% endfor %}
 
-    .pwa-kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 13px; }
-    .pwa-kv dt { color: var(--medium-text-color, #606d7b); }
+    .pwa-kv { display: grid; grid-template-columns: max-content 1fr; gap: var(--xs) var(--l); font-size: 0.8125rem; }
+    .pwa-kv dt { color: var(--fg-subtle); }
     .pwa-kv dd { margin: 0; word-break: break-all; }
 
-    .pwa-danger {
-        border-color: var(--error-color, #cf1124);
-        background: rgba(207, 17, 36, 0.04);
-    }
+    .pwa-preview { max-height: 20rem; overflow: auto; font-size: 0.75rem; }
+    .pwa-test-path { min-width: 18rem; }
+    .pwa-inline-fields { display: flex; flex-wrap: wrap; gap: var(--m); align-items: flex-end; }
+    .pwa-inline-fields .field { margin: 0; }
 {% endcss %}

@@ -1,0 +1,109 @@
+{% extends "_layouts/cp" %}
+{% import "_includes/forms" as forms %}
+
+{% set title = "Devices"|t('pwa') %}
+{% set selectedSubnavItem = 'broadcast' %}
+{% set crumbs = [{ label: "Broadcast"|t('pwa'), url: url('pwa/broadcast') }] %}
+
+{% do view.registerTranslations('pwa', [
+    'Stop sending to this device? The browser keeps its subscription; only the site can remove that.',
+    'Device removed.',
+    'Could not remove that device.',
+]) %}
+
+{% block content %}
+    {% include "pwa/_partials/style" %}
+
+    <div class="pwa-cards">
+        <div class="pwa-card">
+            <h2>{{ "Total"|t('pwa') }}</h2>
+            <div class="pwa-figure">{{ total|number_format }}</div>
+            <div class="pwa-sub">{{ "browsers, not people"|t('pwa') }}</div>
+        </div>
+        {% for service, count in byService %}
+            <div class="pwa-card">
+                <h2>{{ service }}</h2>
+                <div class="pwa-figure">{{ count|number_format }}</div>
+                <div class="pwa-sub">{{ "push service"|t('pwa') }}</div>
+            </div>
+        {% endfor %}
+    </div>
+
+    {% if subscribers|length %}
+        <div class="pane">
+            <p class="pwa-sub">
+                {{ "Removing a device here stops us sending to it. It does not unsubscribe the browser — only the browser can do that, from the site."|t('pwa') }}
+                {% if total > subscribers|length %}
+                    {{ "Showing the first {shown} of {total}."|t('pwa', { shown: subscribers|length, total: total|number_format }) }}
+                {% endif %}
+            </p>
+
+            <table class="data fullwidth">
+                <thead>
+                    <tr>
+                        <th scope="col">{{ "Service"|t('pwa') }}</th>
+                        <th scope="col">{{ "User"|t('pwa') }}</th>
+                        <th scope="col">{{ "Topics"|t('pwa') }}</th>
+                        <th scope="col">{{ "Subscribed"|t('pwa') }}</th>
+                        <th scope="col">{{ "Last reached"|t('pwa') }}</th>
+                        <th scope="col">{{ "Failures"|t('pwa') }}</th>
+                        <th scope="col"><span class="visually-hidden">{{ "Actions"|t('pwa') }}</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for subscriber in subscribers %}
+                        {% set user = subscriber.userId ? craft.users.id(subscriber.userId).status(null).one() : null %}
+                        <tr data-id="{{ subscriber.id }}">
+                            <td>{{ subscriber.service }}</td>
+                            <td>{% if user %}{{ user.username }}{% else %}<span class="light">{{ "None"|t('pwa') }}</span>{% endif %}</td>
+                            <td>{% if subscriber.topics|length %}{{ subscriber.topics|join(', ') }}{% else %}<span class="light">{{ "None"|t('pwa') }}</span>{% endif %}</td>
+                            <td>{% if subscriber.dateCreated %}{{ subscriber.dateCreated|datetime('short') }}{% else %}<span class="light">{{ "Unknown"|t('pwa') }}</span>{% endif %}</td>
+                            <td>{% if subscriber.dateLastSeen %}{{ subscriber.dateLastSeen|datetime('short') }}{% else %}<span class="light">{{ "Never"|t('pwa') }}</span>{% endif %}</td>
+                            <td>{{ subscriber.failures }}</td>
+                            <td class="thin">
+                                {{ forms.button({
+                                    label: "Remove"|t('pwa'),
+                                    class: ['small', 'pwa-remove'],
+                                    spinner: true,
+                                    attributes: {
+                                        data: { id: subscriber.id },
+                                        'aria-label': "Remove the {service} device subscribed {when}"|t('pwa', {
+                                            service: subscriber.service,
+                                            when: subscriber.dateCreated ? subscriber.dateCreated|datetime('short') : '',
+                                        }),
+                                    },
+                                }) }}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="zilch">
+            <div>
+                <p>{{ "Nobody has subscribed yet."|t('pwa') }}</p>
+                <p class="pwa-sub">{{ "Add a subscribe button to your templates — {{ pwa.pushEnabled() }} tells you whether to show one, and window.pwa.subscribe() does the rest."|t('pwa') }}</p>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% js %}
+    document.querySelectorAll('.pwa-remove').forEach(function(button) {
+        button.addEventListener('click', function() {
+            if (!confirm(Craft.t('pwa', 'Stop sending to this device? The browser keeps its subscription; only the site can remove that.'))) return;
+
+            const id = this.dataset.id;
+            this.classList.add('loading');
+
+            Craft.sendActionRequest('POST', 'pwa/broadcast/remove-subscriber', { data: { subscriberId: id } })
+                .then(() => {
+                    document.querySelector('tr[data-id="' + id + '"]')?.remove();
+                    Craft.cp.displayNotice(Craft.t('pwa', 'Device removed.'));
+                })
+                .catch(() => Craft.cp.displayError(Craft.t('pwa', 'Could not remove that device.')))
+                .finally(() => this.classList.remove('loading'));
+        });
+    });
+{% endjs %}

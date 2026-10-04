@@ -251,6 +251,11 @@ async function put(cacheName, request, response, route) {
   // page from a cache that looks healthy.
   if (!response || response.status !== 200 || response.type === 'opaque') return;
 
+  // A response the server marked as not for keeping is not kept. `private` is what a logged-in
+  // page carries, and a cached copy of one is somebody's account page served offline to whoever
+  // picks the device up next.
+  if (/no-store|private/i.test(response.headers.get('cache-control') || '')) return;
+
   // The pages bucket holds pages — things a navigation asked for. Without this line, any
   // background poll that falls through to the catch-all rule lands in it: a JSON endpoint fetched
   // every few seconds with a cache-busting query string will fill the bucket, and the eviction

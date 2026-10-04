@@ -464,7 +464,33 @@
     },
   };
 
+  /**
+   * Throws away every cache the worker owns after a logout.
+   *
+   * The server marks the logout response with a short-lived cookie, because by the time a page
+   * runs the logout itself was a redirect the page never saw. The caches are reachable from the
+   * page directly, so this does not depend on a worker being in control yet.
+   */
+  function clearAfterLogout() {
+    if (document.cookie.indexOf('pwa_clear_caches=1') === -1) return;
+
+    document.cookie = 'pwa_clear_caches=; Max-Age=0; path=/';
+
+    if (!('caches' in window)) return;
+
+    caches.keys().then(function (names) {
+      names
+        .filter(function (name) {
+          return name.indexOf('pwa-') === 0;
+        })
+        .forEach(function (name) {
+          caches.delete(name);
+        });
+    });
+  }
+
   function boot() {
+    clearAfterLogout();
     register();
 
     if (standalone()) report('launch');

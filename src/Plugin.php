@@ -26,10 +26,12 @@ use justinholtweb\pwa\services\Notifications;
 use justinholtweb\pwa\services\Preflight;
 use justinholtweb\pwa\services\Push;
 use justinholtweb\pwa\services\ServiceWorker;
+use justinholtweb\pwa\web\Extension;
 use justinholtweb\pwa\web\Injector;
 use justinholtweb\pwa\web\Variable;
 use Psr\Log\LogLevel;
 use yii\base\Event;
+use yii\web\User as WebUser;
 
 /**
  * PWA — turns a Craft site into an installable app.
@@ -111,6 +113,7 @@ class Plugin extends BasePlugin
         $this->registerSiteUrlRules();
         $this->registerVariable();
         $this->registerGarbageCollection();
+        $this->registerLogoutHook();
 
         // Everything below only matters on a site request, and half of it costs a settings read,
         // so none of it is set up for a console command or a control panel page.
@@ -149,11 +152,14 @@ class Plugin extends BasePlugin
     {
         $item = parent::getCpNavItem();
         $user = Craft::$app->getUser();
+        $subnav = [];
 
-        $subnav = [
-            'deck' => ['label' => Craft::t('pwa', 'Flight deck'), 'url' => 'pwa'],
-            'preflight' => ['label' => Craft::t('pwa', 'Preflight'), 'url' => 'pwa/preflight'],
-        ];
+        // Each item is shown only to somebody its screen would not refuse — a subnav full of
+        // links that answer 403 is a list of things you are not allowed to know about.
+        if ($user->checkPermission(self::PERMISSION_VIEW)) {
+            $subnav['deck'] = ['label' => Craft::t('pwa', 'Flight deck'), 'url' => 'pwa'];
+            $subnav['preflight'] = ['label' => Craft::t('pwa', 'Preflight'), 'url' => 'pwa/preflight'];
+        }
 
         if ($this->isPro() && $user->checkPermission(self::PERMISSION_BROADCAST)) {
             $subnav['broadcast'] = ['label' => Craft::t('pwa', 'Broadcast'), 'url' => 'pwa/broadcast'];
@@ -238,10 +244,17 @@ class Plugin extends BasePlugin
                 return;
             }
 
-            $event->rules[ltrim($settings->manifestPath, '/')] = 'pwa/manifest/serve';
+            // An empty path would register a rule for the site's home page, replacing it with the
+            // manifest. Validation refuses one, and this refuses one that arrived some other way.
+            $manifestPath = ltrim(trim($settings->manifestPath), '/');
+            $workerPath = ltrim(trim($settings->serviceWorkerPath), '/');
 
-            if ($settings->serviceWorkerEnabled) {
-                $event->rules[ltrim($settings->serviceWorkerPath, '/')] = 'pwa/worker/serve';
+            if ($manifestPath !== '') {
+                $event->rules[$manifestPath] = 'pwa/manifest/serve';
+            }
+
+            if ($settings->serviceWorkerEnabled && $workerPath !== '') {
+                $event->rules[$workerPath] = 'pwa/worker/serve';
             }
 
             $event->rules[Files::DIR . '/offline'] = 'pwa/worker/offline';
@@ -263,6 +276,12 @@ class Plugin extends BasePlugin
             $variable = $event->sender;
             $variable->set('pwa', Variable::class);
         });
+
+        // `{{ pwa.head() }}` as well as `{{ craft.pwa.head() }}`. Registered with the view rather
+        // than the Twig environment so it applies to the site and control panel environments both.
+        if (!Craft::$app->getRequest()->getIsConsoleRequest()) {
+            Craft::$app->getView()->registerTwigExtension(new Extension());
+        }
     }
 
     // ---------------------------------------------------------------------- permissions
@@ -301,6 +320,43 @@ class Plugin extends BasePlugin
             $this->events->prune();
             $this->campaigns->pruneDeliveries();
             $this->preflight->prune();
+        });
+    }
+
+    /**
+     * Tells the browser to drop what it cached for the session that just ended.
+     *
+     * `Clear-Site-Data: "cache"` empties the HTTP cache, which is all a header can safely do — the
+     * `storage` type would also unregister the service worker and with it every push subscription.
+     * The worker's own caches are cleared by the page runtime, which looks for the cookie set here
+     * on the next page it runs on.
+     */
+    private function registerLogoutHook(): void
+    {
+        if (Craft::$app->getRequest()->getIsConsoleRequest()) {
+            return;
+        }
+
+        Event::on(WebUser::class, WebUser::EVENT_AFTER_LOGOUT, function() {
+            if (!$this->getSettings()->enabled || !$this->getSettings()->serviceWorkerEnabled) {
+                return;
+            }
+
+            $response = Craft::$app->getResponse();
+
+            if (!$response instanceof \yii\web\Response) {
+                return;
+            }
+
+            $response->getHeaders()->set('Clear-Site-Data', '"cache"');
+            $response->getCookies()->add(new \yii\web\Cookie([
+                'name' => 'pwa_clear_caches',
+                'value' => '1',
+                'httpOnly' => false,
+                'expire' => time() + 300,
+                'path' => '/',
+                'sameSite' => \yii\web\Cookie::SAME_SITE_LAX,
+            ]));
         });
     }
 
@@ -382,15 +438,7 @@ class Plugin extends BasePlugin
 
             $cache->set(self::SCHEDULE_KEY, true, 3600);
 
-            $latest = $this->preflight->getLatest();
-            $lastScheduled = null;
-
-            foreach ($this->preflight->getAudits(null, 20) as $audit) {
-                if ($audit->trigger === 'scheduled') {
-                    $lastScheduled = $audit->dateCreated;
-                    break;
-                }
-            }
+            $lastScheduled = $this->preflight->getLastScheduledAt();
 
             if (!Cadence::isDue($settings->preflightCadence, $settings->preflightHour, $settings->preflightWeekday, $lastScheduled)) {
                 return;
@@ -398,7 +446,7 @@ class Plugin extends BasePlugin
 
             Craft::$app->getQueue()->push(new PreflightJob());
 
-            self::info('Scheduled preflight queued' . ($latest ? '.' : ' (first run).'));
+            self::info('Scheduled preflight queued' . ($lastScheduled ? '.' : ' (first run).'));
         });
     }
 }

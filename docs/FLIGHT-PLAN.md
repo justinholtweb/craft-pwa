@@ -1,3 +1,10 @@
+---
+title: The flight plan
+slug: flight-plan
+order: 60
+summary: The caching rules the service worker follows: defaults, matching, strategies, buckets and precache.
+---
+
 # The flight plan
 
 The flight plan is the ordered list of rules the generated service worker applies to every request.
@@ -33,7 +40,8 @@ If your control panel is not at `/admin`, the defaults follow your `cpTrigger` a
 
 Patterns take `*` (spans anything, including slashes) and `?` (one character). A comma separates
 alternatives: `/feed,/rss/*` matches either. Everything else is literal — a `.` is a dot, not a
-regular expression.
+regular expression. A pattern may be at most 200 characters with at most eight `*`, because every
+request is tested against every rule.
 
 **Prefer request type over file extension.** The browser knows what it asked for; a `.php` endpoint
 returning an image is not hypothetical, and an extension rule gets it wrong.
@@ -58,7 +66,10 @@ that is immutable, usually because its URL contains a hash. On anything else it 
 serves last month's stylesheet.
 
 **Network only** — never touch the cache. For anything personalised, authenticated or
-transactional.
+transactional. Give account pages, carts and anything else that differs for a logged-in visitor a
+network-only rule above the catch-all. The worker already refuses to store a response marked
+`Cache-Control: private` or `no-store`, and clears its caches after a logout, but a rule says so
+before the response is ever fetched.
 
 **Cache only** — never touch the network. Rare; useful for an asset you precached deliberately.
 

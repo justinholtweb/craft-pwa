@@ -1,3 +1,10 @@
+---
+title: Web push
+slug: push
+order: 80
+summary: Self-hosted push notifications: keys, subscribing, broadcasting, and what the delivery numbers mean.
+---
+
 # Web push
 
 Push is the one thing in this plugin that reaches somebody who is not looking at the site. It is a
@@ -54,7 +61,35 @@ document.getElementById('notify').addEventListener('click', () => {
 `pwa:subscribed` and `pwa:unsubscribed` events fire on `window`.
 
 To segment, subscribe with topics — a broadcast with topics reaches only devices that hold one of
-them, and a broadcast with none reaches everybody.
+them, and a broadcast with none reaches everybody. A subscription keeps up to 20 topics, each up to
+64 letters, numbers, `_`, `.`, `:` or `-`; anything else is dropped.
+
+### Which subscriptions are accepted
+
+The subscribe endpoint is anonymous and can't carry a CSRF token (the service worker resubscribes
+on its own when an endpoint rotates), and every broadcast POSTs to the endpoint a subscription
+names. So PWA only accepts endpoints on the push services browsers use — FCM (Chrome, Edge, Opera,
+Samsung), Mozilla's autopush (Firefox), WNS and Apple's push service — over HTTPS on the default
+port. Anything else is refused at subscribe and, if it somehow got into the table, removed rather
+than sent to. Sends never follow a redirect.
+
+A browser whose push service isn't on that list can be allowed in `config/pwa.php`:
+
+```php
+return [
+    'extraPushHosts' => ['push.example.com', '*.push.example.net'],
+];
+```
+
+Subscribing and unsubscribing are limited to 10 requests a minute from one address, and the event
+recorder to 60; past that they answer `429`. The address is the one the connection came from:
+`X-Forwarded-For` and similar headers are only believed when Craft's `trustedHosts` names your
+proxies (its default of `any` does not count). IPv6 addresses are limited per /64.
+
+Two more ceilings apply to *new* devices only, so a known device refreshing its subscription is
+never refused: at most `pushNewPerMinute` (300) across the whole site, and at most
+`pushMaxSubscribers` (250,000) rows in total. A subscription whose keys are not a valid P-256 key
+and 16-byte secret is refused outright.
 
 ## Broadcasting
 
@@ -99,5 +134,6 @@ the second article of the day silently eats the first.
 Run preflight; it checks the keypair. Then, in order: is push enabled in settings; did the browser
 actually grant permission (`Notification.permission`); is the device still in the subscriber list;
 and what does the delivery record say. A `gone` means the subscription was retired — usually the
-browser cleared site data. A 401 or 403 means the VAPID signature was rejected, which points at a
+browser cleared site data — or that its endpoint isn't on a known push service (see *Which
+subscriptions are accepted*). A 401 or 403 means the VAPID signature was rejected, which points at a
 mismatched keypair rather than at the message.

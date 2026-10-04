@@ -6,6 +6,7 @@ use Craft;
 use craft\base\Component;
 use craft\elements\Asset;
 use craft\helpers\FileHelper;
+use craft\helpers\StringHelper;
 use Imagine\Gd\Imagine as GdImagine;
 use Imagine\Image\Box;
 use Imagine\Image\ImageInterface;
@@ -13,6 +14,7 @@ use Imagine\Image\ImagineInterface;
 use Imagine\Image\Palette\RGB;
 use Imagine\Image\Point;
 use Imagine\Imagick\Imagine as ImagickImagine;
+use InvalidArgumentException;
 use justinholtweb\pwa\helpers\Files;
 use justinholtweb\pwa\helpers\Sites;
 use justinholtweb\pwa\models\Manifest;
@@ -85,7 +87,9 @@ class Icons extends Component
     {
         $siteUid = $manifest->siteUid;
 
-        if ($siteUid === null || $manifest->getSourceAsset() === null) {
+        // The ID, not the asset: this runs for anonymous visitors, who may not be allowed to query
+        // the volume the source lives in. It was validated as an image when the manifest was saved.
+        if ($siteUid === null || $manifest->iconAssetId === null) {
             return [];
         }
 
@@ -208,6 +212,9 @@ class Icons extends Component
             return 0;
         }
 
+        // Asset copies land in Craft's temp directory and are ours to remove, however this ends.
+        $temporary = [$sourcePath];
+
         $dir = $this->relativePath($siteUid, '');
         Files::clear($dir);
         FileHelper::createDirectory(Files::path($dir));
@@ -233,6 +240,7 @@ class Icons extends Component
                 $maskablePath = $this->localCopy($maskableSource);
 
                 if ($maskablePath !== null) {
+                    $temporary[] = $maskablePath;
                     $maskableBase = $imagine->open($maskablePath);
                     // A purpose-made maskable icon already has its own safe zone.
                     $inset = 1.0;
@@ -263,6 +271,12 @@ class Icons extends Component
         } catch (Throwable $e) {
             Plugin::error('Icon generation failed: ' . $e->getMessage());
             return $written;
+        } finally {
+            foreach ($temporary as $file) {
+                if (is_file($file)) {
+                    @unlink($file);
+                }
+            }
         }
 
         file_put_contents(Files::path($this->relativePath($siteUid, '.stamp')), $this->stamp($manifest));
@@ -345,14 +359,15 @@ class Icons extends Component
     /**
      * A local, readable copy of an asset — which for a remote volume means downloading it.
      *
-     * SVG sources only work under Imagick. GD cannot rasterise vector artwork at all, and the
-     * failure is a blank PNG rather than an exception, so it is refused here and explained by the
-     * preflight check instead.
+     * Raster sources only. An SVG is refused whatever the image driver: GD cannot draw one at all
+     * (the failure is a blank PNG, not an exception), and handing a document that can carry script
+     * and external references to Imagick is not worth it for a file about to become PNGs. The
+     * manifest screen refuses one too; this catches a source that was set some other way.
      */
     private function localCopy(Asset $asset): ?string
     {
-        if (strtolower($asset->getExtension()) === 'svg' && !Craft::$app->getImages()->getIsImagick()) {
-            Plugin::error('The icon source is an SVG, and this server uses GD, which cannot rasterise one. Upload a PNG.');
+        if (!Manifest::isUsableIconExtension($asset->getExtension())) {
+            Plugin::error('The icon source is a .' . $asset->getExtension() . ' file. Use a PNG, JPEG or WebP image.');
             return null;
         }
 
@@ -371,8 +386,23 @@ class Icons extends Component
         return preg_match('/^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i', $color) === 1 ? $color : '#ffffff';
     }
 
+    /**
+     * Where one site's files live, under the plugin's directory.
+     *
+     * The UID is asserted rather than trusted. It becomes a directory name, and the directory is
+     * cleared on every regeneration — so a value that is anything other than a UID is refused
+     * here, before it is ever joined to a path.
+     */
     private function relativePath(string $siteUid, string $filename): string
     {
+        if (!StringHelper::isUUID($siteUid)) {
+            throw new InvalidArgumentException('Not a site UID: ' . $siteUid);
+        }
+
+        if ($filename !== '' && (str_contains($filename, '/') || str_contains($filename, '\\') || str_contains($filename, '..'))) {
+            throw new InvalidArgumentException('Not a file name: ' . $filename);
+        }
+
         return 'icons/' . $siteUid . ($filename !== '' ? '/' . $filename : '');
     }
 

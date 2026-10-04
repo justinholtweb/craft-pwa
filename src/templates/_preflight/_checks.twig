@@ -1,0 +1,45 @@
+{# The report body. Shared by the preflight screen and a stored audit, so both describe a failure in
+   exactly the same words. The mark is decoration; the status is spelled out for anyone who
+   cannot tell the colours apart, or cannot see them. #}
+
+{% set groups = {
+    delivery: "Delivery"|t('pwa'),
+    manifest: "Manifest"|t('pwa'),
+    icons: "Icons"|t('pwa'),
+    worker: "Service worker"|t('pwa'),
+    offline: "Offline"|t('pwa'),
+    push: "Push"|t('pwa'),
+} %}
+
+{% set marks = { pass: '✓', warn: '!', fail: '✕', skip: '–' } %}
+{% set statusLabels = {
+    pass: "Passed:"|t('pwa'),
+    warn: "Warning:"|t('pwa'),
+    fail: "Failed:"|t('pwa'),
+    skip: "Skipped:"|t('pwa'),
+} %}
+
+{% for group, label in groups %}
+    {% set checks = audit.checks|filter(c => c.group == group) %}
+    {% if checks|length %}
+        <h3 class="pwa-group-heading">{{ label }}</h3>
+        {% for check in checks %}
+            <div class="pwa-check pwa-check--{{ check.status }}">
+                <div class="pwa-check__mark" aria-hidden="true">{{ marks[check.status] ?? '?' }}</div>
+                <div>
+                    <div class="pwa-check__label">
+                        <span class="visually-hidden">{{ statusLabels[check.status] ?? '' }}</span>
+                        {{ check.label }}
+                        {% if check.blocking and check.status == 'fail' %}
+                            <span class="badge">{{ "Blocks install"|t('pwa') }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="pwa-check__summary">{{ check.summary }}</div>
+                    {% if check.remediation %}
+                        <div class="pwa-check__fix">{{ check.remediation }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    {% endif %}
+{% endfor %}

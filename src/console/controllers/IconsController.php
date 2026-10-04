@@ -5,6 +5,7 @@ namespace justinholtweb\pwa\console\controllers;
 use Craft;
 use craft\console\Controller;
 use craft\helpers\Console;
+use justinholtweb\pwa\helpers\Files;
 use justinholtweb\pwa\Plugin;
 use yii\console\ExitCode;
 
@@ -36,6 +37,15 @@ class IconsController extends Controller
         $plugin = Plugin::getInstance();
         $settings = $plugin->getSettings();
 
+        // The web process writes into the web root when it can. From a terminal the web root is
+        // only known if somebody says where it is, and guessing wrong means writing the icons to
+        // storage/ while the site serves them from public/ — a set that exists and is never seen.
+        if (Files::webroot() === null) {
+            $this->stderr("The web root could not be resolved from the command line, so the icons would be written somewhere the site does not serve them from.\nSet CRAFT_WEB_ROOT (or the @webroot alias) to the site's public directory and run this again.\n", Console::FG_RED);
+
+            return ExitCode::CONFIG;
+        }
+
         $sites = $this->site !== ''
             ? array_filter([Craft::$app->getSites()->getSiteByHandle($this->site)])
             : Craft::$app->getSites()->getAllSites();
@@ -49,7 +59,7 @@ class IconsController extends Controller
         $total = 0;
 
         foreach ($sites as $site) {
-            $manifest = $settings->getManifest($site->uid);
+            $manifest = $plugin->manifests->forSite($site);
 
             if ($manifest->getSourceAsset() === null) {
                 $this->stdout($site->getName() . ": no icon source configured, skipped.\n", Console::FG_GREY);

@@ -1,0 +1,225 @@
+{% extends "_layouts/cp" %}
+{% import "_includes/forms" as forms %}
+
+{% set title = "Flight plan"|t('pwa') %}
+{% set selectedSubnavItem = 'flightplan' %}
+{% set fullPageForm = isPro and not readOnly %}
+
+{% do view.registerTranslations('pwa', [
+    'Rule {n} ({label}) — {strategy}',
+    'No rule matches, so the worker leaves this request alone.',
+    'Could not test that URL.',
+    'Reset the flight plan to the shipped defaults? Your rules are thrown away.',
+    'Could not reset the flight plan.',
+]) %}
+
+{% block content %}
+    {% include "pwa/_partials/style" %}
+    {% if isPro and readOnly %}
+        {% include "pwa/_partials/read-only" %}
+    {% endif %}
+
+    <div class="pane">
+        <h2>{{ "First match wins"|t('pwa') }}</h2>
+        <p class="pwa-sub">
+            {{ "The service worker walks these top to bottom and stops at the first rule that claims a request. The specific legs go first; the last one should match everything left."|t('pwa') }}
+        </p>
+        <p class="pwa-sub">
+            {{ "The pages cache only ever stores navigations, and never a response marked private or no-store. Pages that differ for a logged-in visitor belong in a network-only rule of their own."|t('pwa') }}
+        </p>
+    </div>
+
+    {% if not isPro or readOnly %}
+        <div class="pane">
+            {% if not isPro %}
+                <h2>{{ "The shipped defaults"|t('pwa') }}</h2>
+                <div class="readable mb-m">
+                    <blockquote class="note tip">
+                        <p>{{ "These are what Lite runs, and they are deliberately conservative: pages from the network with a cached fallback, assets and images served from the cache and refreshed behind you, and the control panel never touched. Writing your own is a PWA Pro feature."|t('pwa') }}</p>
+                    </blockquote>
+                </div>
+            {% else %}
+                <h2>{{ "Rules"|t('pwa') }}</h2>
+            {% endif %}
+            <table class="data fullwidth">
+                <thead>
+                    <tr>
+                        <th scope="col" class="pwa-order">#</th>
+                        <th scope="col">{{ "Rule"|t('pwa') }}</th>
+                        <th scope="col">{{ "Matches"|t('pwa') }}</th>
+                        <th scope="col">{{ "Strategy"|t('pwa') }}</th>
+                        <th scope="col">{{ "Cache"|t('pwa') }}</th>
+                        <th scope="col">{{ "Enabled"|t('pwa') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for route in routes %}
+                        <tr>
+                            <td class="pwa-order">{{ loop.index }}</td>
+                            <td>{{ route.label ?: '' }}{% if not route.label %}<span class="light">{{ "None"|t('pwa') }}</span>{% endif %}</td>
+                            <td><code>{{ route.pattern }}</code> <span class="pwa-sub">({{ matchTypes[route.match] ?? route.match }})</span></td>
+                            <td>{{ route.strategyLabel }}</td>
+                            <td>
+                                {% if route.strategy == 'networkOnly' %}
+                                    <span class="light">{{ "None"|t('pwa') }}</span>
+                                {% else %}
+                                    {{ caches[route.cache] ?? route.cache }}
+                                {% endif %}
+                            </td>
+                            <td>{{ route.enabled ? "Yes"|t('pwa') : "No"|t('pwa') }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        {{ actionInput('pwa/flight-plan/save') }}
+        {{ redirectInput('pwa/flight-plan') }}
+
+        <div class="pane">
+            {% set rows = [] %}
+            {% for route in routes %}
+                {% set rows = rows|merge([{
+                    label: route.label,
+                    match: route.match,
+                    pattern: route.pattern,
+                    strategy: route.strategy,
+                    cache: route.cache,
+                    networkTimeout: route.networkTimeout,
+                    offlineFallback: route.offlineFallback,
+                    enabled: route.enabled,
+                }]) %}
+            {% endfor %}
+
+            {% set routeErrors = [] %}
+            {% for route in routes %}
+                {% for error in route.getFirstErrors() %}
+                    {% set routeErrors = routeErrors|merge(["Rule {n}: {error}"|t('pwa', { n: loop.parent.loop.index, error: error })]) %}
+                {% endfor %}
+            {% endfor %}
+
+            {{ forms.editableTableField({
+                label: "Rules"|t('pwa'),
+                instructions: "Drag to reorder. A network-only rule for the control panel belongs at the top and should stay there."|t('pwa'),
+                id: 'routes',
+                name: 'routes',
+                cols: {
+                    label: { heading: "Rule"|t('pwa'), type: 'singleline', width: '18%' },
+                    match: { heading: "Match on"|t('pwa'), type: 'select', options: matchTypes, width: '12%' },
+                    pattern: { heading: "Pattern"|t('pwa'), type: 'singleline', code: true, width: '18%' },
+                    strategy: { heading: "Strategy"|t('pwa'), type: 'select', options: strategies },
+                    cache: { heading: "Cache"|t('pwa'), type: 'select', options: caches, width: '10%' },
+                    networkTimeout: { heading: "Timeout"|t('pwa'), type: 'number', width: '8%' },
+                    offlineFallback: { heading: "Offline page"|t('pwa'), type: 'lightswitch', width: '8%' },
+                    enabled: { heading: "Enabled"|t('pwa'), type: 'lightswitch', width: '6%' },
+                },
+                rows: rows,
+                errors: routeErrors,
+                allowAdd: true,
+                allowDelete: true,
+                allowReorder: true,
+                addRowLabel: "Add a rule"|t('pwa'),
+            }) }}
+
+            <p class="pwa-sub">
+                {{ "Patterns take * and ?, and a comma separates alternatives. Match on the path (/blog/*), a file extension (pdf,zip), the browser's own request type (image, script, style, font, document) or the host. At most 200 characters and 8 wildcards."|t('pwa') }}
+            </p>
+        </div>
+    {% endif %}
+
+    {% if isPro %}
+        <div class="pane">
+            <h2>{{ "Test a URL"|t('pwa') }}</h2>
+            <p class="pwa-sub">{{ "Which rule would claim it — the answer to “why is this page not caching?”"|t('pwa') }}</p>
+            <div class="pwa-inline-fields">
+                {{ forms.textField({
+                    label: "URL or path"|t('pwa'),
+                    id: 'pwa-test-path',
+                    class: 'pwa-test-path',
+                    placeholder: '/blog/some-article',
+                }) }}
+                {{ forms.selectField({
+                    label: "Request type"|t('pwa'),
+                    id: 'pwa-test-destination',
+                    options: [
+                        { label: "Page"|t('pwa'), value: 'document' },
+                        { label: "Image"|t('pwa'), value: 'image' },
+                        { label: "Script"|t('pwa'), value: 'script' },
+                        { label: "Stylesheet"|t('pwa'), value: 'style' },
+                        { label: "Font"|t('pwa'), value: 'font' },
+                    ],
+                }) }}
+                {{ forms.button({
+                    label: "Test"|t('pwa'),
+                    id: 'pwa-test-run',
+                    spinner: true,
+                }) }}
+            </div>
+            <p id="pwa-test-result" class="pwa-sub mt-s" role="status" aria-live="polite"></p>
+        </div>
+
+        {% if not readOnly %}
+            <div class="pane">
+                {{ forms.button({
+                    label: "Reset to the defaults"|t('pwa'),
+                    id: 'pwa-reset',
+                    class: 'caution',
+                    spinner: true,
+                }) }}
+                <span class="pwa-sub">{{ "Throws away your rules and goes back to the shipped ones."|t('pwa') }}</span>
+            </div>
+        {% endif %}
+    {% endif %}
+{% endblock %}
+
+{% if isPro %}
+    {% js %}
+        function pwaTestRoute(event) {
+            event?.preventDefault();
+
+            const button = document.getElementById('pwa-test-run');
+            const path = document.getElementById('pwa-test-path').value || '/';
+            const destination = document.getElementById('pwa-test-destination').value;
+            const result = document.getElementById('pwa-test-result');
+
+            button.classList.add('loading');
+
+            Craft.sendActionRequest('POST', 'pwa/flight-plan/test', { data: { path, destination } })
+                .then(response => {
+                    const data = response.data;
+                    result.textContent = data.matched
+                        ? Craft.t('pwa', 'Rule {n} ({label}) — {strategy}', {
+                            n: data.index + 1,
+                            label: data.label || '—',
+                            strategy: data.strategyLabel,
+                          })
+                        : Craft.t('pwa', 'No rule matches, so the worker leaves this request alone.');
+                })
+                .catch(() => Craft.cp.displayError(Craft.t('pwa', 'Could not test that URL.')))
+                .finally(() => button.classList.remove('loading'));
+        }
+
+        document.getElementById('pwa-test-run')?.addEventListener('click', pwaTestRoute);
+
+        // Enter in the test field tests the URL. Left alone, it would submit the page form and
+        // save the flight plan, which is not what anybody pressing Enter there meant.
+        document.getElementById('pwa-test-path')?.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                pwaTestRoute(event);
+            }
+        });
+
+        // Posted from JS: this page is a form already, and a second one inside it does not fail
+        // cleanly — the browser merges its inputs into the outer form.
+        document.getElementById('pwa-reset')?.addEventListener('click', function() {
+            if (!confirm(Craft.t('pwa', 'Reset the flight plan to the shipped defaults? Your rules are thrown away.'))) return;
+
+            this.classList.add('loading');
+
+            Craft.sendActionRequest('POST', 'pwa/flight-plan/reset')
+                .then(() => window.location.reload())
+                .catch(() => Craft.cp.displayError(Craft.t('pwa', 'Could not reset the flight plan.')))
+                .finally(() => this.classList.remove('loading'));
+        });
+    {% endjs %}
+{% endif %}

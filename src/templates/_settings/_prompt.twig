@@ -1,0 +1,107 @@
+{% import "_includes/forms" as forms %}
+<div class="pane">
+    <h2>{{ "Boarding"|t('pwa') }}</h2>
+    <p class="pwa-sub">
+        {{ "Browsers offer their own install button somewhere in a menu nobody opens. The prompt intercepts that offer and asks at a moment you choose — and only when the browser has said an install is genuinely possible."|t('pwa') }}
+    </p>
+
+    {{ forms.lightswitchField({
+        label: "Show the prompt"|t('pwa'),
+        id: 'promptEnabled',
+        name: 'settings[promptEnabled]',
+        disabled: readOnly,
+        errors: settings.getErrors('promptEnabled'),
+        on: settings.promptEnabled,
+    }) }}
+
+    {{ forms.textField({
+        label: "Title"|t('pwa'),
+        instructions: "Falls back to “Install ” and the app name."|t('pwa'),
+        id: 'promptTitle',
+        name: 'settings[promptTitle]',
+        disabled: readOnly,
+        errors: settings.getErrors('promptTitle'),
+        value: settings.promptTitle,
+    }) }}
+
+    {{ forms.textField({
+        label: "Body"|t('pwa'),
+        id: 'promptBody',
+        name: 'settings[promptBody]',
+        disabled: readOnly,
+        errors: settings.getErrors('promptBody'),
+        value: settings.promptBody,
+    }) }}
+
+    {{ forms.textField({
+        label: "Accept button"|t('pwa'),
+        id: 'promptAccept',
+        name: 'settings[promptAccept]',
+        disabled: readOnly,
+        errors: settings.getErrors('promptAccept'),
+        value: settings.promptAccept,
+    }) }}
+
+    {{ forms.textField({
+        label: "Dismiss button"|t('pwa'),
+        id: 'promptDismiss',
+        name: 'settings[promptDismiss]',
+        disabled: readOnly,
+        errors: settings.getErrors('promptDismiss'),
+        value: settings.promptDismiss,
+    }) }}
+</div>
+
+<div class="pane">
+    <h2>{{ "When"|t('pwa') }}</h2>
+
+    {{ forms.selectField({
+        label: "Position"|t('pwa'),
+        instructions: "“Where you put it” renders nothing until a template places {{ pwa.installPrompt() }}."|t('pwa'),
+        id: 'promptPosition',
+        name: 'settings[promptPosition]',
+        disabled: readOnly,
+        errors: settings.getErrors('promptPosition'),
+        value: settings.promptPosition,
+        options: [
+            { label: "Bottom of the window"|t('pwa'), value: 'bottom' },
+            { label: "Top of the window"|t('pwa'), value: 'top' },
+            { label: "Where you put it"|t('pwa'), value: 'inline' },
+        ],
+    }) }}
+
+    {{ forms.textField({
+        label: "Delay"|t('pwa'),
+        instructions: "Seconds on the page before it appears. Asking somebody to install a site they have been on for four seconds is asking a stranger to move in."|t('pwa'),
+        id: 'promptDelay',
+        name: 'settings[promptDelay]',
+        disabled: readOnly,
+        errors: settings.getErrors('promptDelay'),
+        value: settings.promptDelay,
+        type: 'number',
+        size: 5,
+        suffix: "seconds"|t('pwa'),
+    }) }}
+
+    {{ forms.textField({
+        label: "Snooze after dismissal"|t('pwa'),
+        id: 'promptSnoozeDays',
+        name: 'settings[promptSnoozeDays]',
+        disabled: readOnly,
+        errors: settings.getErrors('promptSnoozeDays'),
+        value: settings.promptSnoozeDays,
+        type: 'number',
+        size: 5,
+        suffix: "days"|t('pwa'),
+    }) }}
+
+    {{ forms.lightswitchField({
+        label: "Show iOS visitors how"|t('pwa'),
+        instructions: "Safari has never fired the install event, so on iOS there is nothing to intercept and the only honest option is instructions. Shown to Safari only — Chrome on iOS cannot install to the home screen at all."|t('pwa'),
+        id: 'promptIosHint',
+        name: 'settings[promptIosHint]',
+        disabled: readOnly,
+        errors: settings.getErrors('promptIosHint'),
+        on: settings.promptIosHint,
+    }) }}
+</div>

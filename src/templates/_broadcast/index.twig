@@ -1,0 +1,90 @@
+{% extends "_layouts/cp" %}
+
+{% set title = "Broadcast"|t('pwa') %}
+{% set selectedSubnavItem = 'broadcast' %}
+
+{% block actionButton %}
+    <a class="btn" href="{{ url('pwa/broadcast/subscribers') }}">{{ "Devices"|t('pwa') }}</a>
+    <a class="btn submit" href="{{ url('pwa/broadcast/new') }}">{{ "New broadcast"|t('pwa') }}</a>
+{% endblock %}
+
+{% block content %}
+    {% include "pwa/_partials/style" %}
+    {# Status dots alongside the label, never instead of it. #}
+    {% set campaignStatusClass = { draft: 'disabled', scheduled: 'pending', sending: 'pending', sent: 'on', failed: 'off' } %}
+
+    {% if not pushEnabled %}
+        <div class="readable mb-xl">
+            <blockquote class="note warning">
+                <p>
+                    {{ "Push is switched off: nobody can subscribe and nothing can be sent."|t('pwa') }}
+                    {% if currentUser.admin %}
+                        <a href="{{ url('pwa/settings/push') }}">{{ "Turn it on in Settings → Push"|t('pwa') }}</a>
+                    {% endif %}
+                </p>
+            </blockquote>
+        </div>
+    {% endif %}
+
+    <div class="pwa-cards">
+        <div class="pwa-card">
+            <h2>{{ "Subscribed devices"|t('pwa') }}</h2>
+            <div class="pwa-figure">{{ subscribers|number_format }}</div>
+            <div class="pwa-sub">{{ "one per browser, not per person"|t('pwa') }}</div>
+        </div>
+        <div class="pwa-card">
+            <h2>{{ "Broadcasts"|t('pwa') }}</h2>
+            <div class="pwa-figure">{{ campaigns|length }}</div>
+            <div class="pwa-sub">{{ "most recent 50"|t('pwa') }}</div>
+        </div>
+    </div>
+
+    {% if campaigns|length %}
+        <div class="pane">
+            <table class="data fullwidth">
+                <thead>
+                    <tr>
+                        <th scope="col">{{ "Title"|t('pwa') }}</th>
+                        <th scope="col">{{ "Status"|t('pwa') }}</th>
+                        <th scope="col">{{ "Sent"|t('pwa') }}</th>
+                        <th scope="col">{{ "Delivered"|t('pwa') }}</th>
+                        <th scope="col">{{ "Failed"|t('pwa') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for campaign in campaigns %}
+                        <tr>
+                            <td><a href="{{ url('pwa/broadcast/' ~ campaign.id) }}">{{ campaign.title }}</a></td>
+                            <td>
+                                <span class="status {{ campaignStatusClass[campaign.status] ?? '' }}" aria-hidden="true"></span>
+                                {{ campaign.statusLabel }}
+                            </td>
+                            <td>
+                                {% if campaign.dateSent %}
+                                    {{ campaign.dateSent|datetime('short') }}
+                                {% else %}
+                                    <span class="light">{{ "Not yet"|t('pwa') }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ "{delivered} of {targeted}"|t('pwa', { delivered: campaign.delivered, targeted: campaign.targeted }) }}</td>
+                            <td>
+                                {% if campaign.failed %}
+                                    {{ campaign.failed }}
+                                {% else %}
+                                    <span class="light">{{ "None"|t('pwa') }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="zilch">
+            <div>
+                <p>{{ "Nothing has been broadcast yet."|t('pwa') }}</p>
+                <a class="btn" href="{{ url('pwa/broadcast/new') }}">{{ "New broadcast"|t('pwa') }}</a>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

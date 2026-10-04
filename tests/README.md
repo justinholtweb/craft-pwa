@@ -52,3 +52,18 @@ than mocked. What was verified there for 5.0.0:
   icons, cached a navigation with its expiry stamp, evicted the previous version's caches on
   update, and Chrome offered the install prompt — which means the manifest passed Chrome's own
   installability criteria
+
+## Integration scripts
+
+Two scripts run against the harness, from its web container (never Codeception there):
+
+```sh
+docker exec -w /var/www/html ddev-plugin-testing-web php /var/www/craft-pwa/tests/integration/security.php
+docker exec -w /var/www/html ddev-plugin-testing-web php /var/www/craft-pwa/tests/integration/cp-smoke.php
+```
+
+`security.php` covers the anonymous endpoints, the push-host allow-list, rate limits (including a
+burst with spoofed `Client-IP` / `X-Forwarded-For` headers), site-UID path traversal and settings
+mass-assignment. `cp-smoke.php` renders every control panel screen as an admin and exercises the
+saves that used to go wrong. `cp-smoke.php --read-only` checks the screens with admin changes off;
+its header explains the one-line harness config it needs. Both restore what they change.

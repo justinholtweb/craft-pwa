@@ -59,10 +59,11 @@ class Route extends Model
 
     public bool $enabled = true;
 
-    public function rules(): array
+    protected function defineRules(): array
     {
-        return [
+        return array_merge(parent::defineRules(), [
             [['pattern'], 'required'],
+            [['pattern'], 'validatePattern'],
             [['match'], 'in', 'range' => [self::MATCH_PATH, self::MATCH_EXTENSION, self::MATCH_DESTINATION, self::MATCH_HOST]],
             [['strategy'], 'in', 'range' => [
                 self::STRATEGY_NETWORK_FIRST,
@@ -73,7 +74,43 @@ class Route extends Model
             ]],
             [['cache'], 'in', 'range' => [self::CACHE_PAGES, self::CACHE_ASSETS, self::CACHE_IMAGES]],
             [['networkTimeout'], 'number', 'min' => 0, 'max' => 60],
-        ];
+        ]);
+    }
+
+    /** Longest pattern a rule may have. Patterns are compiled to regexes on every request. */
+    public const MAX_PATTERN_LENGTH = 200;
+
+    /** Most wildcards in one pattern — each `*` is a `.*`, and enough of them backtrack badly. */
+    public const MAX_WILDCARDS = 8;
+
+    public function validatePattern(string $attribute): void
+    {
+        $problem = self::patternProblem((string)$this->$attribute);
+
+        if ($problem !== null) {
+            $this->addError($attribute, $problem);
+        }
+    }
+
+    /**
+     * Why a pattern would be refused, or null if it is fine.
+     *
+     * Both matchers turn `*` into `.*` and test every request against every rule — the worker in
+     * the visitor's browser, PHP in the control panel. A long pattern of many wildcards is how a
+     * flight plan turns into catastrophic backtracking on one unlucky URL, so the shape is capped
+     * here rather than trusted.
+     */
+    public static function patternProblem(string $pattern): ?string
+    {
+        if (mb_strlen($pattern) > self::MAX_PATTERN_LENGTH) {
+            return Craft::t('pwa', 'A pattern can be at most {max} characters.', ['max' => self::MAX_PATTERN_LENGTH]);
+        }
+
+        if (substr_count($pattern, '*') > self::MAX_WILDCARDS) {
+            return Craft::t('pwa', 'A pattern can have at most {max} wildcards.', ['max' => self::MAX_WILDCARDS]);
+        }
+
+        return null;
     }
 
     /**

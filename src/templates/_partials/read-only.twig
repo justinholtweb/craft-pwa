@@ -1,0 +1,10 @@
+{# Shown where a screen edits project config and this environment does not allow that. The fields
+   stay visible — what is deployed is worth seeing — but nothing on the page can be saved. #}
+<div class="readable mb-xl">
+    <blockquote class="note warning">
+        <p>
+            {{ "These settings live in project config, and admin changes are not allowed on this environment, so this screen is read-only. Change them where admin changes are allowed and they arrive here with the next deploy."|t('pwa') }}
+            <a href="https://craftcms.com/docs/5.x/reference/config/general.html#allowadminchanges" target="_blank" rel="noopener">{{ "About allowAdminChanges"|t('pwa') }}<span class="visually-hidden"> {{ "(opens in a new window)"|t('pwa') }}</span></a>
+        </p>
+    </blockquote>
+</div>

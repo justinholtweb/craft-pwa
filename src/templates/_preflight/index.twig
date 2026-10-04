@@ -1,0 +1,125 @@
+{% extends "_layouts/cp" %}
+
+{% set title = "Preflight"|t('pwa') %}
+{% set selectedSubnavItem = 'preflight' %}
+
+{% block actionButton %}
+    {# No fullPageForm on this screen, so this form is not nested inside another one. #}
+    <form method="post" accept-charset="UTF-8">
+        {{ csrfInput() }}
+        {{ actionInput('pwa/preflight/run') }}
+        <button type="submit" class="btn submit">{{ "Run preflight"|t('pwa') }}</button>
+    </form>
+{% endblock %}
+
+{% block content %}
+    {% include "pwa/_partials/style" %}
+
+    {% if audit is null %}
+        <div class="zilch">
+            <div>
+                <p>{{ "Nothing checked yet"|t('pwa') }}</p>
+                <p class="pwa-sub">
+                    {{ "Preflight fetches this site over HTTP the way a browser would — the manifest, the service worker, the icons, the start URL — and reports what it finds rather than what the settings say. Run it once now, and again after any deploy."|t('pwa') }}
+                </p>
+                <form method="post" accept-charset="UTF-8">
+                    {{ csrfInput() }}
+                    {{ actionInput('pwa/preflight/run') }}
+                    <button type="submit" class="btn">{{ "Run preflight"|t('pwa') }}</button>
+                </form>
+            </div>
+        </div>
+    {% else %}
+        {% set band = audit.score >= 90 ? 'good' : (audit.score >= 70 ? 'fair' : 'poor') %}
+
+        <div class="pane">
+            <div class="pwa-score pwa-score--{{ band }}">
+                <div class="pwa-score__value">{{ audit.score }}<span class="visually-hidden"> / 100</span></div>
+                <div>
+                    <div>
+                        {% if audit.installable %}
+                            <strong>{{ "A browser will offer to install this."|t('pwa') }}</strong>
+                        {% else %}
+                            <strong>{{ "No browser will offer to install this yet."|t('pwa') }}</strong>
+                        {% endif %}
+                    </div>
+                    <div class="pwa-sub">
+                        {{ "{passed} passed, {warned, plural, =1{# warning} other{# warnings}}, {failed} failed"|t('pwa', {
+                            passed: audit.passed,
+                            warned: audit.warned,
+                            failed: audit.failed,
+                        }) }}
+                        {% if audit.dateCreated %}· {{ audit.dateCreated|datetime('short') }}{% endif %}
+                        · {% include "pwa/_preflight/_trigger" with { trigger: audit.trigger } only %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if audit.blockers|length %}
+            <div class="pane">
+                <h2>{{ "Fix these first"|t('pwa') }}</h2>
+                <p class="pwa-sub">
+                    {{ "Each of these is part of the browser's own installability test. Everything else on this page is about how good the app is; these are about whether there is one."|t('pwa') }}
+                </p>
+                {% for check in audit.blockers %}
+                    <div class="pwa-check pwa-check--fail">
+                        <div class="pwa-check__mark" aria-hidden="true">✕</div>
+                        <div>
+                            <div class="pwa-check__label">
+                                <span class="visually-hidden">{{ "Failed:"|t('pwa') }}</span>
+                                {{ check.label }}
+                                <span class="badge">{{ "Blocks install"|t('pwa') }}</span>
+                            </div>
+                            <div class="pwa-check__summary">{{ check.summary }}</div>
+                            {% if check.remediation %}<div class="pwa-check__fix">{{ check.remediation }}</div>{% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <div class="pane">
+            {% include "pwa/_preflight/_checks" %}
+        </div>
+    {% endif %}
+
+    {% if not isPro %}
+        <div class="readable mb-xl">
+            <blockquote class="note tip">
+                <p><strong>{{ "Scheduled checks"|t('pwa') }}</strong> — {{ "PWA Pro runs this on a schedule and emails somebody when a deploy breaks it — which is the run that matters, because it is the one nobody thought to do."|t('pwa') }}</p>
+            </blockquote>
+        </div>
+    {% endif %}
+
+    {% if history|length > 1 %}
+        <div class="pane">
+            <h2>{{ "History"|t('pwa') }}</h2>
+            <table class="data fullwidth">
+                <thead>
+                    <tr>
+                        <th scope="col">{{ "When"|t('pwa') }}</th>
+                        <th scope="col">{{ "Score"|t('pwa') }}</th>
+                        <th scope="col">{{ "Installable"|t('pwa') }}</th>
+                        <th scope="col">{{ "Problems"|t('pwa') }}</th>
+                        <th scope="col">{{ "Trigger"|t('pwa') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in history %}
+                        <tr>
+                            <td><a href="{{ url('pwa/preflight/' ~ row.id) }}">{{ row.dateCreated|datetime('short') }}</a></td>
+                            <td>{{ row.score }}</td>
+                            <td>
+                                <span class="status {{ row.installable ? 'on' : 'off' }}" aria-hidden="true"></span>
+                                {{ row.installable ? "Yes"|t('pwa') : "No"|t('pwa') }}
+                            </td>
+                            <td>{{ row.failed + row.warned ?: '' }}{% if not (row.failed + row.warned) %}<span class="light">{{ "None"|t('pwa') }}</span>{% endif %}</td>
+                            <td>{% include "pwa/_preflight/_trigger" with { trigger: row.trigger } only %}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+{% endblock %}

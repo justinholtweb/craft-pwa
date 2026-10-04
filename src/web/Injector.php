@@ -18,7 +18,8 @@ use yii\base\Event;
  * on the tidy ones.
  *
  * It is nonetheless narrow about when it acts: site requests only, HTML only, successful responses
- * only, and never when the path has been excluded. Anything it is unsure about, it leaves alone.
+ * only, pages rather than documents another plugin serves (see isPageResponse()), and never when the
+ * path has been excluded. Anything it is unsure about, it leaves alone.
  */
 class Injector
 {
@@ -66,6 +67,10 @@ class Injector
             return;
         }
 
+        if (!self::isPageResponse($response)) {
+            return;
+        }
+
         // Craft renders site templates through its own `template` format, not Yii's `html` — so
         // an allowlist of Yii's formats matches nothing on a normal Craft page, which is a fine
         // way to build a feature that silently never runs. The content type is the honest signal,
@@ -110,5 +115,40 @@ class Injector
         }
 
         $response->content = substr($content, 0, $position) . $html . substr($content, $position);
+
+        // `sendContentLengthHeader` stamped the length during prepare(), before this event. A
+        // longer body under the old length is truncated by the browser at exactly the byte where
+        // the injection started — which looks like a broken template, not a broken header.
+        $headers = $response->getHeaders();
+
+        if ($headers->has('content-length')) {
+            $headers->set('content-length', (string)strlen($response->content));
+        }
+    }
+
+    /**
+     * Whether a response is a page the site rendered, rather than a document some plugin serves —
+     * the convention the family's injectors (PWA, Tape, Schedulr, Leads) all follow.
+     *
+     * Two signals. A controller action answering an `actions/…` URL is never a site page. And a
+     * response carrying `Content-Security-Policy: sandbox` is a document meant to run cut off from
+     * the site — Eye's embed proxy sends exactly that. Before this, the service worker registration
+     * landed inside Eye's proxied iframes, registering a worker from the proxy's URL.
+     */
+    public static function isPageResponse(Response $response): bool
+    {
+        if (Craft::$app->getRequest()->getIsActionRequest()) {
+            return false;
+        }
+
+        foreach ((array)$response->getHeaders()->get('content-security-policy', [], false) as $policy) {
+            foreach (explode(';', strtolower((string)$policy)) as $directive) {
+                if (preg_match('/^\s*sandbox(\s|$)/', $directive)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 }

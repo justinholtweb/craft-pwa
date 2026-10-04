@@ -1,0 +1,45 @@
+{% extends "_layouts/cp" %}
+{% import "_includes/forms" as forms %}
+
+{% set title = "PWA settings"|t('pwa') %}
+{% set selectedSubnavItem = 'settings' %}
+{% set fullPageForm = not readOnly %}
+{% set crumbs = [
+    { label: "Settings"|t('app'), url: url('settings') },
+    { label: "Plugins"|t('app'), url: url('settings/plugins') },
+] %}
+
+{# Not `tabs`: that name belongs to Craft's own CP layout, which merges its own structure into
+   whatever is under it — and a plain map of labels makes it fail with a type error from inside a
+   compiled template, a long way from here. #}
+{% set navItems = {
+    general: { label: "General"|t('pwa'), url: url('pwa/settings/general') },
+    offline: { label: "Offline"|t('pwa'), url: url('pwa/settings/offline') },
+    prompt: { label: "Install prompt"|t('pwa'), url: url('pwa/settings/prompt') },
+    push: { label: "Push"|t('pwa'), url: url('pwa/settings/push') },
+} %}
+
+{% block sidebar %}
+    {% include "_includes/nav" with {
+        label: "PWA settings"|t('pwa'),
+        items: navItems,
+        selectedItem: section,
+    } only %}
+{% endblock %}
+
+{% block content %}
+    {% include "pwa/_partials/style" %}
+
+    {% if readOnly %}
+        {% include "pwa/_partials/read-only" %}
+    {% else %}
+        {{ actionInput('pwa/settings/save') }}
+        {{ hiddenInput('section', section) }}
+    {% endif %}
+
+    <p class="pwa-sub mb-l">
+        {{ "Each section saves on its own. Everything here lives in project config, so it deploys with the code that assumes it — except the VAPID keypair, which is kept in the database."|t('pwa') }}
+    </p>
+
+    {% include 'pwa/_settings/_' ~ section %}
+{% endblock %}

@@ -4,6 +4,8 @@ namespace justinholtweb\pwa\models;
 
 use Craft;
 use craft\base\Model;
+use craft\db\Query;
+use craft\db\Table;
 use craft\elements\Asset;
 use craft\helpers\App;
 use craft\helpers\UrlHelper;
@@ -28,6 +30,13 @@ class Manifest extends Model
     public const DISPLAY_FULLSCREEN = 'fullscreen';
     public const DISPLAY_MINIMAL_UI = 'minimal-ui';
     public const DISPLAY_BROWSER = 'browser';
+
+    /**
+     * What an icon source may be. Raster only: SVG is refused outright rather than rasterised,
+     * because GD cannot draw one at all and an SVG is a document that can carry script — neither
+     * is worth it for a file that is going to be turned into PNGs anyway.
+     */
+    public const ICON_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp'];
 
     /** The site this manifest belongs to. */
     public ?string $siteUid = null;
@@ -100,6 +109,14 @@ class Manifest extends Model
     public ?int $maskableAssetId = null;
 
     /**
+     * How the two images are kept in project config. Element IDs differ between environments, so
+     * an ID synced from development points at nothing — or at some other asset — in production.
+     * The IDs above are resolved from these on load and are what the rest of the code reads.
+     */
+    public ?string $iconAssetUid = null;
+    public ?string $maskableAssetUid = null;
+
+    /**
      * App shortcuts — the long-press menu on the home screen icon.
      *
      * @var array<int, array<string, mixed>>
@@ -120,10 +137,13 @@ class Manifest extends Model
      */
     public string $id = '';
 
-    public function rules(): array
+    protected function defineRules(): array
     {
-        return [
+        return array_merge(parent::defineRules(), [
+            [['siteUid'], 'validateSite', 'skipOnEmpty' => false],
             [['name', 'shortName', 'description', 'startUrl', 'scope', 'id'], 'string'],
+            [['startUrl', 'scope', 'id'], 'validateSameOrigin'],
+            [['iconAssetId', 'maskableAssetId'], 'validateIconAsset'],
             [['display'], 'in', 'range' => [
                 self::DISPLAY_STANDALONE,
                 self::DISPLAY_FULLSCREEN,
@@ -143,7 +163,93 @@ class Manifest extends Model
                 'message' => Craft::t('pwa', 'Use a hex colour, like #0b3d91.'),
                 'skipOnEmpty' => true,
             ],
-        ];
+        ]);
+    }
+
+    /** The manifest must belong to a site that exists. */
+    public function validateSite(string $attribute): void
+    {
+        if ($this->siteUid === null || Sites::byUid($this->siteUid) === null) {
+            $this->addError($attribute, Craft::t('pwa', 'That site does not exist.'));
+        }
+    }
+
+    /**
+     * Start URL, scope and ID must stay on the site's own origin.
+     *
+     * A browser discards a manifest whose start URL is cross-origin, so such a value is always a
+     * mistake — and preflight fetches whatever is here, so it must not be a way to point the server
+     * at somewhere else. Relative values are what everybody types and are always fine.
+     */
+    public function validateSameOrigin(string $attribute): void
+    {
+        $value = trim((string)$this->$attribute);
+
+        if ($value === '' || (!str_contains($value, '://') && !str_starts_with($value, '//'))) {
+            return;
+        }
+
+        $base = (string)App::parseEnv((string)$this->getSite()?->getBaseUrl());
+
+        if (!self::isSameOrigin($value, $base)) {
+            $this->addError($attribute, Craft::t('pwa', 'Use a path on this site, like /, rather than a URL on another origin.'));
+        }
+    }
+
+    /** Icon sources must be raster images. */
+    public function validateIconAsset(string $attribute): void
+    {
+        if (!$this->$attribute) {
+            return;
+        }
+
+        $asset = Craft::$app->getAssets()->getAssetById((int)$this->$attribute);
+
+        if ($asset === null || $asset->kind !== Asset::KIND_IMAGE || !self::isUsableIconExtension($asset->getExtension())) {
+            $this->addError($attribute, Craft::t('pwa', 'Choose a PNG, JPEG or WebP image. SVG and other formats cannot be used as an icon source.'));
+        }
+    }
+
+    public static function isUsableIconExtension(string $extension): bool
+    {
+        return in_array(strtolower($extension), self::ICON_EXTENSIONS, true);
+    }
+
+    /**
+     * Whether an absolute URL shares scheme, host and port with a base URL.
+     *
+     * A base URL without a host (a bare path) has no origin to compare against, so nothing
+     * absolute matches it.
+     */
+    public static function isSameOrigin(string $url, string $baseUrl): bool
+    {
+        $url = str_starts_with($url, '//') ? 'https:' . $url : $url;
+        $a = parse_url($url);
+        $b = parse_url($baseUrl);
+
+        if (!is_array($a) || !is_array($b) || empty($a['host']) || empty($b['host'])) {
+            return false;
+        }
+
+        $scheme = static fn(array $p) => strtolower($p['scheme'] ?? 'https');
+        $port = static fn(array $p) => (int)($p['port'] ?? ($scheme($p) === 'http' ? 80 : 443));
+
+        return $scheme($a) === $scheme($b)
+            && strtolower($a['host']) === strtolower($b['host'])
+            && $port($a) === $port($b);
+    }
+
+    /**
+     * A colour as the manifest wants it: `#` and hex digits.
+     *
+     * Craft's colour field submits `1b8ef2`, not `#1b8ef2`, and a model that validated the
+     * posted value as-is would reject every colour saved through the control panel.
+     */
+    public static function normalizeColor(string $value): string
+    {
+        $value = trim($value);
+
+        return $value === '' ? '' : '#' . ltrim($value, '#');
     }
 
     public function getSite(): ?Site
@@ -220,7 +326,44 @@ class Manifest extends Model
     {
         $lang = trim($this->lang);
 
-        return $lang !== '' ? $lang : (string)($this->getSite()?->language ?? Craft::$app->language);
+        return $lang !== '' ? $lang : (string)($this->getSite()->language ?? Craft::$app->language);
+    }
+
+    public function init(): void
+    {
+        parent::init();
+
+        // Project config holds UIDs; an older config, or the CP form, holds IDs. Resolved straight
+        // from the elements table rather than an asset query: the manifest is served to anonymous
+        // visitors, and a plugin that restricts asset queries for guests (protecting the volume the
+        // icon happens to live in) would otherwise strip every icon from it.
+        foreach (['icon', 'maskable'] as $which) {
+            $uid = $this->{$which . 'AssetUid'};
+
+            if ($uid) {
+                $id = (new Query())
+                    ->select(['id'])
+                    ->from(Table::ELEMENTS)
+                    ->where(['uid' => $uid, 'type' => Asset::class, 'dateDeleted' => null])
+                    ->scalar();
+                $this->{$which . 'AssetId'} = $id !== false && $id !== null ? (int)$id : null;
+            }
+        }
+    }
+
+    /**
+     * The UIDs to store for the IDs currently set.
+     *
+     * @return array{iconAssetUid: string|null, maskableAssetUid: string|null}
+     */
+    public function assetUids(): array
+    {
+        $uid = static fn(?int $id) => $id ? Asset::find()->id($id)->status(null)->site('*')->one()?->uid : null;
+
+        return [
+            'iconAssetUid' => $uid($this->iconAssetId),
+            'maskableAssetUid' => $uid($this->maskableAssetId),
+        ];
     }
 
     public function getSourceAsset(): ?Asset

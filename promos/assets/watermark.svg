@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Slide watermark: the install arrow from src/icon.svg, in white, with the tile,
+       the phone and the plus stripped. The tile reads as a grey box at watermark scale, and so does the
+       phone's outline — it is a rounded rectangle 4.5 units thick, and the plus read as a block behind the headings. The arrow's tail is drawn on
+       past the bottom of the viewBox so no straight edge closes the shape back into a box; the
+       slides position this so the cut line falls below the slide. -->
+  <g fill="#FFFFFF">
+    <path d="M22 112C22 72 40 47 74 43.5V36.5L86.5 47L74 57.5V50.5C49 53 32 76 31 112z"/>
+  </g>
+</svg>

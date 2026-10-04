@@ -6,6 +6,7 @@ use Craft;
 use craft\base\Component;
 use craft\db\Query;
 use craft\elements\Entry;
+use craft\helpers\DateTimeHelper;
 use craft\helpers\Db;
 use craft\helpers\Json;
 use craft\helpers\StringHelper;
@@ -106,8 +107,13 @@ class Campaigns extends Component
         return true;
     }
 
+    /** Deletes a campaign — but not one whose batches are still on the queue. */
     public function delete(int $id): bool
     {
+        if ($this->getCampaignById($id)?->status === Campaign::STATUS_SENDING) {
+            return false;
+        }
+
         return CampaignRecord::deleteAll(['id' => $id]) > 0;
     }
 
@@ -122,7 +128,7 @@ class Campaigns extends Component
     {
         $push = Plugin::getInstance()->push;
 
-        $campaign->targeted = count($push->getSubscribers($campaign->siteId, $campaign->topics));
+        $campaign->targeted = $push->countMatching($campaign->siteId, $campaign->topics);
         $campaign->delivered = 0;
         $campaign->failed = 0;
         $campaign->status = Campaign::STATUS_SENDING;
@@ -145,7 +151,6 @@ class Campaigns extends Component
 
         Craft::$app->getQueue()->push(new BroadcastJob([
             'campaignId' => $campaign->id,
-            'offset' => 0,
         ]));
 
         Plugin::info("Campaign {$campaign->id} queued for {$campaign->targeted} device(s).");
@@ -154,18 +159,24 @@ class Campaigns extends Component
     }
 
     /**
-     * Sends one batch, returning the number of devices it got through.
+     * Sends one batch, starting after a subscriber ID.
      *
-     * Zero means there is nothing left, which is how the job knows to stop rather than by
-     * trusting a count taken before the send began.
+     * Returns how many rows were *walked* (which is how the job knows whether to continue — a
+     * short page is the end of the list), how many devices were sent to (fewer, when topics
+     * filtered some out), and the last ID walked, which is where the next batch starts. Keyset
+     * rather than offset, because sending deletes devices that are gone, and an offset into a
+     * list that shrinks underneath it skips whoever slid back into the gap.
+     *
+     * @return array{walked: int, sent: int, lastId: int}
      */
-    public function deliverBatch(Campaign $campaign, int $offset, int $limit): int
+    public function deliverBatch(Campaign $campaign, int $afterId, int $limit): array
     {
         $push = Plugin::getInstance()->push;
-        $subscribers = $push->getSubscribers($campaign->siteId, $campaign->topics, $offset, $limit);
+        $page = $push->subscriberPage($campaign->siteId, $campaign->topics, $afterId, $limit);
+        $subscribers = $page['subscribers'];
 
         if (empty($subscribers)) {
-            return 0;
+            return ['walked' => $page['walked'], 'sent' => 0, 'lastId' => $page['lastId']];
         }
 
         $delivered = 0;
@@ -230,7 +241,7 @@ class Campaigns extends Component
             ['id' => $campaign->id],
         )->execute();
 
-        return count($subscribers);
+        return ['walked' => $page['walked'], 'sent' => count($subscribers), 'lastId' => $page['lastId']];
     }
 
     /** Marks a campaign finished, and says how it went. */
@@ -339,13 +350,13 @@ class Campaigns extends Component
             'topics' => is_string($topics) ? (array)Json::decodeIfJson($topics) : (array)($topics ?? []),
             'entryId' => $record->entryId !== null ? (int)$record->entryId : null,
             'status' => (string)$record->status,
-            'dateScheduled' => $record->dateScheduled ? new DateTime($record->dateScheduled) : null,
-            'dateSent' => $record->dateSent ? new DateTime($record->dateSent) : null,
+            'dateScheduled' => $record->dateScheduled ? (DateTimeHelper::toDateTime($record->dateScheduled) ?: null) : null,
+            'dateSent' => $record->dateSent ? (DateTimeHelper::toDateTime($record->dateSent) ?: null) : null,
             'targeted' => (int)$record->targeted,
             'delivered' => (int)$record->delivered,
             'failed' => (int)$record->failed,
             'createdBy' => $record->createdBy !== null ? (int)$record->createdBy : null,
-            'dateCreated' => $record->dateCreated ? new DateTime($record->dateCreated) : null,
+            'dateCreated' => $record->dateCreated ? (DateTimeHelper::toDateTime($record->dateCreated) ?: null) : null,
         ]);
     }
 }

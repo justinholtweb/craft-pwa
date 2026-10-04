@@ -34,7 +34,7 @@ class PreflightController extends Controller
         $site = Craft::$app->getSites()->getCurrentSite();
         $plugin = Plugin::getInstance();
 
-        return $this->renderTemplate('pwa/preflight/index', [
+        return $this->renderTemplate('pwa/_preflight/index', [
             'site' => $site,
             'audit' => $plugin->preflight->getLatest($site->id),
             'history' => $plugin->preflight->getAudits($site->id, 20),
@@ -51,7 +51,7 @@ class PreflightController extends Controller
             throw new NotFoundHttpException();
         }
 
-        return $this->renderTemplate('pwa/preflight/detail', [
+        return $this->renderTemplate('pwa/_preflight/detail', [
             'audit' => $audit,
             'site' => $audit->siteId ? Craft::$app->getSites()->getSiteById($audit->siteId) : null,
         ]);
@@ -65,7 +65,10 @@ class PreflightController extends Controller
         $plugin = Plugin::getInstance();
 
         $audit = $plugin->preflight->run($site, 'manual');
-        $plugin->preflight->save($audit);
+
+        if (!$plugin->preflight->save($audit)) {
+            return $this->asFailure(Craft::t('pwa', 'The check ran, but its report could not be stored.'));
+        }
 
         if ($this->request->getAcceptsJson()) {
             return $this->asJson([
@@ -75,6 +78,8 @@ class PreflightController extends Controller
                 'auditId' => $audit->id,
             ]);
         }
+
+        $this->setSuccessFlash(Craft::t('pwa', 'Preflight finished: {score}/100.', ['score' => $audit->score]));
 
         return $this->redirect('pwa/preflight');
     }

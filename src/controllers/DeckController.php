@@ -32,11 +32,12 @@ class DeckController extends Controller
         $plugin = Plugin::getInstance();
         $settings = $plugin->getSettings();
         $site = Craft::$app->getSites()->getCurrentSite();
-        $manifest = $settings->getManifest($site->uid);
+        $manifest = $plugin->manifests->forSite($site);
 
         $latest = $plugin->preflight->getLatest($site->id);
 
-        return $this->renderTemplate('pwa/deck/index', [
+        return $this->renderTemplate('pwa/_deck/index', [
+            'cacheCounter' => $plugin->serviceWorker->counter(),
             'site' => $site,
             'settings' => $settings,
             'manifest' => $manifest,
@@ -48,7 +49,7 @@ class DeckController extends Controller
             'precache' => $plugin->serviceWorker->precache($site),
             'totals' => $plugin->events->totals(30, $site->id),
             'installs' => $plugin->events->series('install', 30, $site->id),
-            'offlinePaths' => $plugin->events->topOfflinePaths(30, 8, $site->id),
+            'offlinePaths' => $plugin->events->topOfflinePaths(30, 10, $site->id),
             'subscribers' => $plugin->isPro() && $settings->pushEnabled
                 ? $plugin->push->countSubscribers($site->id)
                 : null,

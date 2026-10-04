@@ -57,8 +57,8 @@ class PreflightController extends Controller
         foreach ($sites as $site) {
             $audit = $plugin->preflight->run($site, 'console');
 
-            if ($this->save) {
-                $plugin->preflight->save($audit);
+            if ($this->save && !$plugin->preflight->save($audit)) {
+                $this->stderr("Could not store the audit for {$site->getName()}; see storage/logs/pwa.log.\n", Console::FG_RED);
             }
 
             $this->stdout("\n" . $site->getName() . ' — ', Console::BOLD);
@@ -115,14 +115,7 @@ class PreflightController extends Controller
             return ExitCode::OK;
         }
 
-        $lastScheduled = null;
-
-        foreach ($plugin->preflight->getAudits(null, 20) as $audit) {
-            if ($audit->trigger === 'scheduled') {
-                $lastScheduled = $audit->dateCreated;
-                break;
-            }
-        }
+        $lastScheduled = $plugin->preflight->getLastScheduledAt();
 
         if (!Cadence::isDue($settings->preflightCadence, $settings->preflightHour, $settings->preflightWeekday, $lastScheduled)) {
             $this->stdout("Not due yet.\n", Console::FG_GREY);

@@ -7,6 +7,7 @@ use craft\helpers\Html;
 use craft\helpers\Json;
 use craft\helpers\Template;
 use craft\models\Site;
+use justinholtweb\pwa\models\Manifest;
 use justinholtweb\pwa\Plugin;
 use Throwable;
 use Twig\Markup;
@@ -41,7 +42,7 @@ class Head
         }
 
         $site ??= Craft::$app->getSites()->getCurrentSite();
-        $manifest = $settings->getManifest($site->uid);
+        $manifest = $plugin->manifests->forSite($site);
         $tags = [];
 
         $tags[] = Html::tag('link', '', [
@@ -100,7 +101,7 @@ class Head
             }
         }
 
-        $tags[] = self::configTag($site);
+        $tags[] = self::configTag($site, $manifest);
         $tags[] = Html::tag('script', '', ['src' => self::runtimeUrl(), 'defer' => true]);
 
         return implode("\n", array_filter($tags)) . "\n";
@@ -113,11 +114,10 @@ class Head
      * without an unsafe-inline exception, and the runtime reads it from there. Writing the same
      * values as JavaScript statements would work everywhere except the sites that care most.
      */
-    private static function configTag(Site $site): string
+    private static function configTag(Site $site, Manifest $manifest): string
     {
         $plugin = Plugin::getInstance();
         $settings = $plugin->getSettings();
-        $manifest = $settings->getManifest($site->uid);
 
         $config = [
             'swUrl' => $settings->serviceWorkerEnabled ? $plugin->serviceWorker->scriptUrl($site) : null,
@@ -162,7 +162,12 @@ class Head
         // validate CSRF anyway, because the service worker that calls them has no page and no
         // token; see PushController for what that does and does not cost.
 
-        return Html::tag('script', Json::encode($config), ['type' => 'application/json', 'id' => 'pwa-config']);
+        // Every character that could end the script element or an attribute is escaped, so a
+        // prompt title containing `</script>` stays text. The values come from the CP, but they
+        // are printed into every page of the site.
+        $json = Json::encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+
+        return Html::tag('script', $json, ['type' => 'application/json', 'id' => 'pwa-config']);
     }
 
     /**

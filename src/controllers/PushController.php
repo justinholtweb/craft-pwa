@@ -4,9 +4,11 @@ namespace justinholtweb\pwa\controllers;
 
 use Craft;
 use craft\web\Controller;
+use justinholtweb\pwa\helpers\RateLimit;
 use justinholtweb\pwa\Plugin;
 use yii\web\ForbiddenHttpException;
 use yii\web\Response;
+use yii\web\TooManyRequestsHttpException;
 
 /**
  * Where browsers hand over and take back their push subscriptions.
@@ -18,11 +20,16 @@ use yii\web\Response;
  *
  * What that costs is worth stating plainly. A forged subscribe adds *the attacker's own device* to
  * the list — they cannot produce a subscription for somebody else's browser, because the keys come
- * from that browser's own push manager. So the risk is junk rows, not exposure, and it is bounded
- * further by the endpoint refusing anything that is not an HTTPS push endpoint.
+ * from that browser's own push manager. So the risk is junk rows, not exposure. It is bounded by a
+ * per-address rate limit, a cap on topics, and an endpoint that must be on a real push service —
+ * the server POSTs to it on every broadcast, so "any https URL" made it a way to reach internal
+ * hosts (see Push::PUSH_HOSTS).
  */
 class PushController extends Controller
 {
+    /** Subscribe and unsubscribe requests allowed per address per minute. */
+    public const PER_MINUTE = 10;
+
     protected array|bool|int $allowAnonymous = true;
     public $enableCsrfValidation = false;
 
@@ -35,7 +42,13 @@ class PushController extends Controller
         $plugin = Plugin::getInstance();
 
         if (!$plugin->getSettings()->enabled || !$plugin->getSettings()->pushEnabled || !$plugin->isPro()) {
-            throw new ForbiddenHttpException('Push is not enabled for this site.');
+            throw new ForbiddenHttpException(Craft::t('pwa', 'Push is not enabled for this site.'));
+        }
+
+        // A browser subscribes once and resubscribes when its endpoint rotates; ten a minute from
+        // one address is generous for that and stingy for a script filling the table.
+        if (!RateLimit::allow('push', self::PER_MINUTE)) {
+            throw new TooManyRequestsHttpException(Craft::t('pwa', 'Too many push subscription requests. Try again in a minute.'));
         }
 
         return true;
@@ -48,7 +61,7 @@ class PushController extends Controller
         $subscription = $this->request->getBodyParam('subscription');
 
         if (!is_array($subscription)) {
-            return $this->asJson(['subscribed' => false, 'error' => 'No subscription was sent.']);
+            return $this->asJson(['subscribed' => false, 'error' => Craft::t('pwa', 'No subscription was sent.')]);
         }
 
         $topics = $this->request->getBodyParam('topics', []);
@@ -61,7 +74,7 @@ class PushController extends Controller
         );
 
         if ($subscriber === null) {
-            return $this->asJson(['subscribed' => false, 'error' => 'The subscription was not usable.']);
+            return $this->asJson(['subscribed' => false, 'error' => Craft::t('pwa', 'The subscription was not usable.')]);
         }
 
         // A resubscribe by a browser that had rotated its endpoint leaves the old row behind,

@@ -1,0 +1,251 @@
+{% extends "_layouts/cp" %}
+{% import "_includes/forms" as forms %}
+
+{% set title = isNew ? "New broadcast"|t('pwa') : campaign.title %}
+{% set selectedSubnavItem = 'broadcast' %}
+{% set crumbs = [{ label: "Broadcast"|t('pwa'), url: url('pwa/broadcast') }] %}
+{% set sent = campaign.status in ['sent', 'sending'] %}
+{% set fullPageForm = not sent %}
+
+{% set deliveryLabels = {
+    delivered: "Delivered"|t('pwa'),
+    failed: "Failed"|t('pwa'),
+    gone: "Gone (dropped from the list)"|t('pwa'),
+} %}
+
+{% do view.registerTranslations('pwa', [
+    'Could not send.',
+    'Delete this broadcast? Its delivery report goes with it.',
+    'Could not delete the broadcast.',
+]) %}
+
+{% block content %}
+    {% include "pwa/_partials/style" %}
+
+    {% if sent %}
+        <div class="pane">
+            <h2>{{ campaign.statusLabel }}</h2>
+            <dl class="pwa-kv">
+                <dt>{{ "Sent"|t('pwa') }}</dt>
+                <dd>
+                    {% if campaign.dateSent %}
+                        {{ campaign.dateSent|datetime('short') }}
+                    {% else %}
+                        <span class="light">{{ "Not yet"|t('pwa') }}</span>
+                    {% endif %}
+                </dd>
+                <dt>{{ "Aimed at"|t('pwa') }}</dt>
+                <dd>{{ "{count, plural, =1{# device} other{# devices}}"|t('pwa', { count: campaign.targeted }) }}</dd>
+                {% for status, count in breakdown %}
+                    <dt>{{ deliveryLabels[status] ?? status }}</dt><dd>{{ count }}</dd>
+                {% else %}
+                    <dt>{{ "Delivered"|t('pwa') }}</dt><dd>{{ campaign.delivered }}</dd>
+                    <dt>{{ "Failed"|t('pwa') }}</dt><dd>{{ campaign.failed }}</dd>
+                {% endfor %}
+            </dl>
+            <p class="pwa-sub mt-m">
+                {{ "A sent broadcast cannot be edited or recalled. Devices recorded as gone were dropped from the list — the push service had already retired them."|t('pwa') }}
+            </p>
+        </div>
+
+        <div class="pane">
+            <h2>{{ "What was sent"|t('pwa') }}</h2>
+            <dl class="pwa-kv">
+                <dt>{{ "Title"|t('pwa') }}</dt><dd>{{ campaign.title }}</dd>
+                <dt>{{ "Body"|t('pwa') }}</dt>
+                <dd>
+                    {% if campaign.body %}{{ campaign.body }}{% else %}<span class="light">{{ "None"|t('pwa') }}</span>{% endif %}
+                </dd>
+                <dt>{{ "Opens"|t('pwa') }}</dt>
+                <dd>
+                    {% if campaign.url %}{{ campaign.url }}{% else %}<span class="light">{{ "None"|t('pwa') }}</span>{% endif %}
+                </dd>
+            </dl>
+        </div>
+    {% else %}
+        {{ actionInput('pwa/broadcast/save') }}
+        {{ hiddenInput('campaignId', campaign.id) }}
+
+        <div class="pane">
+            <h2>{{ "The notification"|t('pwa') }}</h2>
+
+            {{ forms.textField({
+                label: "Title"|t('pwa'),
+                instructions: "Shown in bold on the device. Keep it under about forty characters — Android truncates, iOS wraps once."|t('pwa'),
+                id: 'title',
+                name: 'title',
+                value: campaign.title,
+                required: true,
+                maxlength: 120,
+                errors: campaign.getErrors('title'),
+            }) }}
+
+            {{ forms.textareaField({
+                label: "Body"|t('pwa'),
+                id: 'body',
+                name: 'body',
+                value: campaign.body,
+                rows: 3,
+                maxlength: 400,
+                errors: campaign.getErrors('body'),
+            }) }}
+
+            {{ forms.textField({
+                label: "Opens"|t('pwa'),
+                instructions: "Where a tap lands. Relative to the site."|t('pwa'),
+                id: 'url',
+                name: 'url',
+                value: campaign.url,
+                placeholder: '/',
+            }) }}
+
+            {{ forms.textField({
+                label: "Collapse tag"|t('pwa'),
+                instructions: "Two notifications with the same tag replace each other on the device. Right for anything that supersedes itself — a score, a status — and wrong for anything that does not."|t('pwa'),
+                id: 'tag',
+                name: 'tag',
+                value: campaign.tag,
+            }) }}
+        </div>
+
+        <div class="pane">
+            <h2>{{ "Who gets it"|t('pwa') }}</h2>
+
+            {{ forms.selectField({
+                label: "Site"|t('pwa'),
+                id: 'siteId',
+                name: 'siteId',
+                value: campaign.siteId,
+                options: [{ label: "Every site"|t('pwa'), value: '' }]|merge(sites|map(s => { label: s.name, value: s.id })),
+            }) }}
+
+            {{ forms.textField({
+                label: "Topics"|t('pwa'),
+                instructions: "Comma separated. Only devices that subscribed to one of these receive it; leave empty to reach everybody."|t('pwa'),
+                id: 'topics',
+                name: 'topics',
+                value: campaign.topics|join(', '),
+            }) }}
+
+            {{ forms.dateTimeField({
+                label: "Send at"|t('pwa'),
+                instructions: "Leave empty to send by hand. A scheduled broadcast goes out when pwa/broadcast/due next runs."|t('pwa'),
+                id: 'dateScheduled',
+                name: 'dateScheduled',
+                value: campaign.dateScheduled,
+            }) }}
+
+            <p class="pwa-sub">
+                {{ "{count, plural, =0{No devices match} =1{# device matches} other{# devices match}} right now."|t('pwa', { count: subscribers }) }}
+            </p>
+        </div>
+
+        {% if not isNew %}
+            <div class="pane">
+                <h2>{{ "Send it"|t('pwa') }}</h2>
+                <div class="readable mb-m">
+                    <blockquote class="note warning">
+                        <p>{{ "This reaches people who are not on the site, on devices they are holding. It cannot be edited, recalled or deleted afterwards."|t('pwa') }}</p>
+                    </blockquote>
+                </div>
+
+                <div class="pwa-inline-fields">
+                    {{ forms.textField({
+                        label: "Type “{word}” to confirm"|t('pwa', { word: confirmWord }),
+                        id: 'pwa-confirm',
+                        size: 12,
+                        autocomplete: false,
+                    }) }}
+                    {{ forms.button({
+                        label: "Send to {count, plural, =1{# device} other{# devices}}"|t('pwa', { count: subscribers }),
+                        id: 'pwa-send',
+                        class: 'caution',
+                        disabled: true,
+                        attributes: { disabled: true },
+                        spinner: true,
+                    }) }}
+                </div>
+                <p class="pwa-sub mt-xs">
+                    {{ "Typing it out is not a formality — it is the one thing that cannot happen by accident, by a double click, or by a browser restoring this form on back-navigation. Sending sends what is saved."|t('pwa') }}
+                </p>
+            </div>
+        {% else %}
+            <p class="pwa-sub">{{ "Save it first. Sending is a separate, deliberate step."|t('pwa') }}</p>
+        {% endif %}
+    {% endif %}
+
+    {% if not isNew and campaign.status != 'sending' %}
+        <div class="pane">
+            {{ forms.button({
+                label: "Delete broadcast"|t('pwa'),
+                id: 'pwa-delete',
+                class: 'caution',
+                spinner: true,
+            }) }}
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% if not isNew %}
+    {% js %}
+        const campaignId = {{ campaign.id|json_encode|raw }};
+        const confirmWord = {{ confirmWord|json_encode|raw }};
+        const confirmField = document.getElementById('pwa-confirm');
+        const sendButton = document.getElementById('pwa-send');
+
+        function pwaArmed() {
+            return !!confirmField && confirmField.value.trim().toLowerCase() === confirmWord.toLowerCase();
+        }
+
+        confirmField?.addEventListener('input', function() {
+            const armed = pwaArmed();
+            sendButton.disabled = !armed;
+            sendButton.classList.toggle('disabled', !armed);
+        });
+
+        // Enter in the confirmation field must not submit the page form — that would save the
+        // draft, and somebody who has just typed the word expects the send, not a save.
+        confirmField?.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+
+                if (pwaArmed()) sendButton.click();
+            }
+        });
+
+        // Posted on its own rather than by re-pointing the page form: sending what is *saved* is
+        // the honest thing to do, and submitting the edit form would send whatever happened to be
+        // typed into it without saving that anywhere.
+        sendButton?.addEventListener('click', function() {
+            if (this.disabled || !pwaArmed()) return;
+
+            this.classList.add('loading');
+
+            Craft.sendActionRequest('POST', 'pwa/broadcast/send', {
+                data: { campaignId, confirm: confirmField.value.trim() },
+            })
+                .then(response => {
+                    Craft.cp.displayNotice(response.data.message);
+                    window.location.reload();
+                })
+                .catch(e => Craft.cp.displayError(e?.response?.data?.message || Craft.t('pwa', 'Could not send.')))
+                .finally(() => this.classList.remove('loading'));
+        });
+
+        // Also from JS: on an unsent broadcast this sits inside the page form, and a nested form's
+        // action input would join the outer form and turn Save into Delete.
+        document.getElementById('pwa-delete')?.addEventListener('click', function() {
+            if (!confirm(Craft.t('pwa', 'Delete this broadcast? Its delivery report goes with it.'))) return;
+
+            this.classList.add('loading');
+
+            Craft.sendActionRequest('POST', 'pwa/broadcast/delete', { data: { campaignId } })
+                .then(response => {
+                    Craft.cp.displayNotice(response.data.message);
+                    window.location.href = Craft.getCpUrl('pwa/broadcast');
+                })
+                .catch(e => Craft.cp.displayError(e?.response?.data?.message || Craft.t('pwa', 'Could not delete the broadcast.')))
+                .finally(() => this.classList.remove('loading'));
+        });
+    {% endjs %}
+{% endif %}

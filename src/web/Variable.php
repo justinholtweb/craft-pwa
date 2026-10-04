@@ -53,7 +53,7 @@ class Variable
     /** The manifest as data, for a template that wants to render something from it. */
     public function manifest(?int $siteId = null): Manifest
     {
-        return Plugin::getInstance()->getSettings()->getManifest($this->site($siteId)->uid);
+        return Plugin::getInstance()->manifests->forSite($this->site($siteId));
     }
 
     /** @return array<string, mixed> */

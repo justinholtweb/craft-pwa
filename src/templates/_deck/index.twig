@@ -1,0 +1,201 @@
+{% extends "_layouts/cp" %}
+{% import "_includes/forms" as forms %}
+
+{% set title = "Flight deck"|t('pwa') %}
+{% set selectedSubnavItem = 'deck' %}
+
+{% set canManage = currentUser.can('pwa:manage') %}
+{% set newWindow = "(opens in a new window)"|t('pwa') %}
+
+{% do view.registerTranslations('pwa', [
+    'Could not invalidate the caches.',
+    'Throw away every cache the installed app holds? Visitors fetch everything again on their next visit.',
+]) %}
+
+{% block actionButton %}
+    {# No fullPageForm on this screen, so a plain form here is not nested inside another one. #}
+    <form method="post" accept-charset="UTF-8" class="flex">
+        {{ csrfInput() }}
+        {{ actionInput('pwa/preflight/run') }}
+        <button type="submit" class="btn submit">{{ "Run preflight"|t('pwa') }}</button>
+    </form>
+{% endblock %}
+
+{% block content %}
+    {% include "pwa/_partials/style" %}
+
+    {% if not settings.enabled %}
+        <div class="readable mb-xl">
+            <blockquote class="note warning">
+                <p>
+                    {{ "PWA is switched off: no manifest, no service worker and no tags are being served."|t('pwa') }}
+                    {% if currentUser.admin %}
+                        <a href="{{ url('pwa/settings/general') }}">{{ "Turn it on in Settings"|t('pwa') }}</a>
+                    {% endif %}
+                </p>
+            </blockquote>
+        </div>
+    {% endif %}
+
+    <div class="pwa-cards">
+        <div class="pwa-card">
+            <h2>{{ "Installable"|t('pwa') }}</h2>
+            <div class="pwa-figure">
+                {%- if audit is null -%}
+                    <span class="light">{{ "Unknown"|t('pwa') }}</span>
+                {%- else -%}
+                    {{ audit.installable ? "Yes"|t('pwa') : "No"|t('pwa') }}
+                {%- endif -%}
+            </div>
+            <div class="pwa-sub">
+                {% if audit %}
+                    {{ "checked {when}"|t('pwa', { when: audit.dateCreated|datetime('short') }) }}
+                {% else %}
+                    {{ "never checked"|t('pwa') }}
+                {% endif %}
+            </div>
+        </div>
+        <div class="pwa-card">
+            <h2>{{ "Preflight score"|t('pwa') }}</h2>
+            <div class="pwa-figure">
+                {%- if audit -%}
+                    {{ audit.score }}
+                {%- else -%}
+                    <span class="light">{{ "None"|t('pwa') }}</span>
+                {%- endif -%}
+            </div>
+            <div class="pwa-sub">
+                {% if audit %}
+                    {{ "{n, plural, =0{nothing to look at} =1{# thing to look at} other{# things to look at}}"|t('pwa', { n: audit.failed + audit.warned }) }}
+                {% else %}
+                    {{ "Run preflight to find out"|t('pwa') }}
+                {% endif %}
+            </div>
+        </div>
+        <div class="pwa-card">
+            <h2>{{ "Installs"|t('pwa') }}</h2>
+            <div class="pwa-figure">{{ totals.install|number_format }}</div>
+            <div class="pwa-sub">{{ "last 30 days"|t('pwa') }}</div>
+        </div>
+        <div class="pwa-card">
+            <h2>{{ "Launches"|t('pwa') }}</h2>
+            <div class="pwa-figure">{{ totals.launch|number_format }}</div>
+            <div class="pwa-sub">{{ "opened from a home screen"|t('pwa') }}</div>
+        </div>
+        {% if subscribers is not null %}
+            <div class="pwa-card">
+                <h2>{{ "Push devices"|t('pwa') }}</h2>
+                <div class="pwa-figure">{{ subscribers|number_format }}</div>
+                <div class="pwa-sub">{{ "subscribed"|t('pwa') }}</div>
+            </div>
+        {% endif %}
+    </div>
+
+    {% if installs|length %}
+        {% set peak = max(installs) %}
+        {% set total = installs|reduce((carry, n) => carry + n, 0) %}
+        <div class="pane">
+            <h2>{{ "Installs, day by day"|t('pwa') }}</h2>
+            <div class="pwa-sparkline" role="img" aria-label="{{ '{total, plural, =1{# install} other{# installs}} over the last 30 days, at most {peak} in a day.'|t('pwa', { total: total, peak: peak }) }}">
+                {% for day, count in installs %}
+                    <span data-h="{{ peak > 0 ? (count / peak * 10)|round : 0 }}" title="{{ day }}: {{ count }}"></span>
+                {% endfor %}
+            </div>
+            <div class="pwa-sub mt-xs" aria-hidden="true">
+                {{ "Peak {peak} in a day."|t('pwa', { peak: peak }) }}
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="pane">
+        <h2>{{ "What the browser fetches"|t('pwa') }}</h2>
+        <dl class="pwa-kv">
+            <dt>{{ "Manifest"|t('pwa') }}</dt>
+            <dd><a href="{{ manifestUrl }}" target="_blank" rel="noopener">{{ manifestUrl }}<span class="visually-hidden"> {{ newWindow }}</span></a></dd>
+            <dt>{{ "Service worker"|t('pwa') }}</dt>
+            <dd>
+                {% if settings.serviceWorkerEnabled %}
+                    <a href="{{ workerUrl }}" target="_blank" rel="noopener">{{ workerUrl }}<span class="visually-hidden"> {{ newWindow }}</span></a>
+                {% else %}
+                    <span class="light">{{ "Switched off"|t('pwa') }}</span>
+                {% endif %}
+            </dd>
+            <dt>{{ "Offline page"|t('pwa') }}</dt>
+            <dd><a href="{{ offlineUrl }}" target="_blank" rel="noopener">{{ offlineUrl }}<span class="visually-hidden"> {{ newWindow }}</span></a></dd>
+            <dt>{{ "Precached"|t('pwa') }}</dt>
+            <dd>{{ "{n, plural, =1{# URL} other{# URLs}}"|t('pwa', { n: precache|length }) }}</dd>
+            <dt>{{ "Invalidated"|t('pwa') }}</dt>
+            <dd>{{ "{n, plural, =1{once} other{# times}}"|t('pwa', { n: cacheCounter }) }}</dd>
+        </dl>
+
+        {% if canManage %}
+            <div class="mt-m">
+                {{ forms.button({
+                    label: "Invalidate caches"|t('pwa'),
+                    id: 'pwa-invalidate',
+                    class: 'caution',
+                    spinner: true,
+                }) }}
+                <span class="pwa-sub">
+                    {{ "Every installed copy throws away what it stored. Editing the manifest or the flight plan already does this; use it after a deploy that changed pages or assets."|t('pwa') }}
+                </span>
+            </div>
+        {% endif %}
+    </div>
+
+    {% if icons|length %}
+        <div class="pane">
+            <h2>{{ "Icons"|t('pwa') }}</h2>
+            <div class="pwa-icons">
+                {% for icon in icons|filter(i => i.sizes in ['192x192', '512x512']) %}
+                    <figure>
+                        <img src="{{ icon.src }}" width="72" height="72" alt="">
+                        <figcaption>{{ icon.sizes }} {{ icon.purpose }}</figcaption>
+                    </figure>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+
+    {% if offlinePaths|length %}
+        <div class="pane">
+            <h2>{{ "Hit while offline"|t('pwa') }}</h2>
+            <p class="pwa-sub">
+                {{ "The pages people asked for most often with no connection and no stored copy, over the last 30 days. This is the precache list, written by your visitors."|t('pwa') }}
+            </p>
+            <table class="data fullwidth">
+                <thead><tr><th scope="col">{{ "Path"|t('pwa') }}</th><th scope="col">{{ "Times"|t('pwa') }}</th></tr></thead>
+                <tbody>
+                    {% for row in offlinePaths %}
+                        <tr><td><code>{{ row.path }}</code></td><td>{{ row.total }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+
+    {% if not isPro %}
+        <div class="readable">
+            <blockquote class="note tip">
+                <p><strong>{{ "PWA Pro"|t('pwa') }}</strong> — {{ "adds web push, a flight plan you write yourself, and a preflight check that runs on a schedule and emails somebody when a deploy breaks it."|t('pwa') }}</p>
+            </blockquote>
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% js %}
+    // Posted from JS rather than as a second form: this screen may gain a page form later, and a
+    // nested form does not fail cleanly — it merges its inputs into the outer one.
+    document.getElementById('pwa-invalidate')?.addEventListener('click', function() {
+        if (!confirm(Craft.t('pwa', 'Throw away every cache the installed app holds? Visitors fetch everything again on their next visit.'))) return;
+
+        this.classList.add('loading');
+        Craft.sendActionRequest('POST', 'pwa/deck/invalidate')
+            .then(response => {
+                Craft.cp.displayNotice(response.data.message);
+                window.location.reload();
+            })
+            .catch(() => Craft.cp.displayError(Craft.t('pwa', 'Could not invalidate the caches.')))
+            .finally(() => this.classList.remove('loading'));
+    });
+{% endjs %}

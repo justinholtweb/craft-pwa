@@ -47,8 +47,8 @@ automatically.
 
 ## Requirements
 
-Craft CMS 5.3+, PHP 8.2+, `ext-openssl` (for push), and GD or Imagick (for icons). An SVG icon
-source needs Imagick; GD cannot rasterise one.
+Craft CMS 5.3+, PHP 8.2+, `ext-openssl` (for push), and GD or Imagick (for icons). The icon source
+must be a PNG, JPEG or WebP image; SVG is not accepted.
 
 ## Installing
 
@@ -65,7 +65,7 @@ Run **Preflight**.
 **Lite** is a complete, installable PWA: manifest, icons, service worker, offline page, install
 prompt, and the full preflight check. Nothing about *whether the app works* is held back.
 
-**Pro** adds what a site grows into:
+**Pro** ($79, then $59/year for updates) adds what a site grows into:
 
 - **Web push** — subscribers, broadcasts, delivery reports, notify-on-publish
 - **A flight plan you write yourself** — your own caching rules per route
@@ -141,6 +141,14 @@ type it out.
 
 ## Documentation
 
+Full documentation is at [justinholt.com/plugins/craft-pwa/docs](https://justinholt.com/plugins/craft-pwa/docs).
+The same pages live in [`docs/`](docs):
+
+- [docs/installation.md](docs/installation.md) — requirements, install, editions
+- [docs/configuration.md](docs/configuration.md) — the manifest, every setting, the config file
+- [docs/usage.md](docs/usage.md) — the flight deck, the install prompt, Twig, the runtime, the console
+- [docs/troubleshooting.md](docs/troubleshooting.md) — no install offer, 404s, stale pages
+- [docs/faq.md](docs/faq.md)
 - [docs/FLIGHT-PLAN.md](docs/FLIGHT-PLAN.md) — caching strategies, and which one to reach for
 - [docs/PUSH.md](docs/PUSH.md) — subscribing, broadcasting, and what can go wrong
 - [docs/PREFLIGHT.md](docs/PREFLIGHT.md) — every check, and what each failure means
@@ -148,4 +156,5 @@ type it out.
 
 ## Licence
 
-Proprietary. See [LICENSE.md](LICENSE.md).
+The Craft License. See [LICENSE.md](LICENSE.md). Lite is free, with no licence key needed; Pro is a
+paid edition, bought through the Craft Plugin Store.

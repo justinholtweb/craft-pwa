@@ -1,0 +1,98 @@
+{% import "_includes/forms" as forms %}
+<div class="pane">
+    <h2>{{ "The offline page"|t('pwa') }}</h2>
+    <p class="pwa-sub">
+        {{ "Shown when somebody asks for a page they have never visited and there is no connection. It is fetched when the worker installs, long before it is needed, so it must not depend on anything that is fetched later."|t('pwa') }}
+    </p>
+
+    {% for site in sites %}
+        {{ forms.textField({
+            label: sites|length > 1 ? site.name : "URI"|t('pwa'),
+            instructions: sites|length > 1 ? null : "A URI on this site. Leave empty to use the plain one the plugin ships."|t('pwa'),
+            id: 'offlineUri-' ~ site.uid,
+            name: 'settings[offlineUri][' ~ site.uid ~ ']',
+            disabled: readOnly,
+            errors: settings.getErrors('offlineUri'),
+            value: settings.offlineUri[site.uid] ?? '',
+            placeholder: 'pwa/offline',
+        }) }}
+    {% endfor %}
+</div>
+
+<div class="pane">
+    <h2>{{ "Precache"|t('pwa') }}</h2>
+
+    {{ forms.lightswitchField({
+        label: "Precache the essentials"|t('pwa'),
+        instructions: "The offline page and the icons. Both are needed at exactly the moment they cannot be fetched."|t('pwa'),
+        id: 'precacheEssentials',
+        name: 'settings[precacheEssentials]',
+        disabled: readOnly,
+        errors: settings.getErrors('precacheEssentials'),
+        on: settings.precacheEssentials,
+    }) }}
+
+    {{ forms.textareaField({
+        label: "Also precache"|t('pwa'),
+        instructions: "One URI per line. Everything here is downloaded before the worker activates, so a long list makes the first visit slower for a benefit that only appears offline."|t('pwa'),
+        id: 'precache',
+        name: 'settings[precache]',
+        disabled: readOnly,
+        errors: settings.getErrors('precache'),
+        value: settings.precache|join("\n"),
+        rows: 4,
+    }) }}
+</div>
+
+<div class="pane">
+    <h2>{{ "Cache limits"|t('pwa') }}</h2>
+    <p class="pwa-sub">
+        {{ "Separate ceilings per bucket, because one shared limit means a photo gallery evicts the app shell."|t('pwa') }}
+    </p>
+
+    {{ forms.textField({
+        label: "Pages"|t('pwa'),
+        id: 'maxCachedPages',
+        name: 'settings[maxCachedPages]',
+        disabled: readOnly,
+        errors: settings.getErrors('maxCachedPages'),
+        value: settings.maxCachedPages,
+        type: 'number',
+        size: 6,
+    }) }}
+
+    {{ forms.textField({
+        label: "Assets"|t('pwa'),
+        id: 'maxCachedAssets',
+        name: 'settings[maxCachedAssets]',
+        disabled: readOnly,
+        errors: settings.getErrors('maxCachedAssets'),
+        value: settings.maxCachedAssets,
+        type: 'number',
+        size: 6,
+    }) }}
+
+    {{ forms.textField({
+        label: "Images"|t('pwa'),
+        id: 'maxCachedImages',
+        name: 'settings[maxCachedImages]',
+        disabled: readOnly,
+        errors: settings.getErrors('maxCachedImages'),
+        value: settings.maxCachedImages,
+        type: 'number',
+        size: 6,
+    }) }}
+
+    {{ forms.textField({
+        label: "Keep cached responses for"|t('pwa'),
+        instructions: "A cache with no expiry is not a cache, it is a copy."|t('pwa'),
+        id: 'cacheLifetimeDays',
+        name: 'settings[cacheLifetimeDays]',
+        disabled: readOnly,
+        errors: settings.getErrors('cacheLifetimeDays'),
+        value: settings.cacheLifetimeDays,
+        type: 'number',
+        size: 5,
+        suffix: "days"|t('pwa'),
+    }) }}
+</div>

@@ -20,25 +20,57 @@ class SettingsController extends Controller
 {
     private const SECTIONS = ['general', 'offline', 'prompt', 'push'];
 
+    /**
+     * What each section may change.
+     *
+     * A save only touches the keys its own screen shows. Without the list, any posted
+     * `settings[…]` key landed on the model — including the ones that are deliberately not on any
+     * screen: `extraPushHosts`, which decides where the server will POST to, and the manifests
+     * and flight plan, which have their own screens and their own checks.
+     */
+    public const EDITABLE = [
+        'general' => [
+            'enabled', 'manifestPath', 'serviceWorkerEnabled', 'serviceWorkerPath', 'injectHead',
+            'injectExclude', 'iosStatusBarStyle', 'splashEnabled', 'trackEvents', 'eventRetentionDays',
+        ],
+        'offline' => [
+            'offlineUri', 'precacheEssentials', 'precache', 'maxCachedPages', 'maxCachedAssets',
+            'maxCachedImages', 'cacheLifetimeDays',
+        ],
+        'prompt' => [
+            'promptEnabled', 'promptTitle', 'promptBody', 'promptAccept', 'promptDismiss',
+            'promptPosition', 'promptDelay', 'promptSnoozeDays', 'promptIosHint',
+        ],
+        'push' => [
+            'pushEnabled', 'pushSubject', 'pushIcon', 'pushBadge', 'pushOnPublish', 'pushSections',
+            'pushBatchSize', 'pushMaxFailures', 'pushMaxSubscribers', 'pushNewPerMinute',
+            'deliveryRetentionDays', 'preflightScheduled', 'preflightCadence', 'preflightHour',
+            'preflightWeekday', 'preflightRecipients', 'preflightOnlyOnFailure',
+        ],
+    ];
+
     public function beforeAction($action): bool
     {
         if (!parent::beforeAction($action)) {
             return false;
         }
 
-        $this->requireAdmin();
+        // Admins may look on any environment; saving settings is checked separately, against
+        // allowAdminChanges. The VAPID actions stay reachable everywhere — they write the
+        // database, not project config, and production is where keys get generated.
+        $this->requireAdmin(false);
 
         return true;
     }
 
-    public function actionIndex(string $section = 'general'): Response
+    public function actionIndex(string $section = 'general', ?\justinholtweb\pwa\models\Settings $settings = null): Response
     {
         if (!in_array($section, self::SECTIONS, true)) {
             $section = 'general';
         }
 
         $plugin = Plugin::getInstance();
-        $settings = $plugin->getSettings();
+        $settings ??= $plugin->getSettings();
         $sites = Craft::$app->getSites()->getAllSites();
 
         $vapid = null;
@@ -51,7 +83,8 @@ class SettingsController extends Controller
             }
         }
 
-        return $this->renderTemplate('pwa/settings/index', [
+        return $this->renderTemplate('pwa/_settings/index', [
+            'readOnly' => !Craft::$app->getConfig()->getGeneral()->allowAdminChanges,
             'section' => $section,
             'settings' => $settings,
             'sites' => $sites,
@@ -67,33 +100,33 @@ class SettingsController extends Controller
     public function actionSave(): ?Response
     {
         $this->requirePostRequest();
+        $this->requireAdmin();
 
         $plugin = Plugin::getInstance();
         $settings = $plugin->getSettings();
         $posted = $this->request->getBodyParam('settings', []);
         $section = (string)$this->request->getBodyParam('section', 'general');
 
-        // Only the posted keys are applied, so saving one section cannot blank out another's
-        // values just because they were not on screen.
-        foreach ((array)$posted as $key => $value) {
-            if (!property_exists($settings, $key)) {
-                continue;
-            }
+        if (!isset(self::EDITABLE[$section])) {
+            $section = 'general';
+        }
 
+        // Only this section's keys are applied, so saving one section cannot blank out another's
+        // values just because they were not on screen — and nothing off-screen can be set at all.
+        foreach (self::allowedValues($section, (array)$posted) as $key => $value) {
             $settings->$key = $this->coerce($settings->$key, $value);
         }
 
         if (!$settings->validate()) {
             $this->setFailFlash(Craft::t('pwa', 'Couldn’t save settings.'));
 
-            Craft::$app->getUrlManager()->setRouteParams(['settings' => $settings]);
+            Craft::$app->getUrlManager()->setRouteParams(['settings' => $settings, 'section' => $section]);
 
             return null;
         }
 
-        // Anything on these screens changes what the worker was generated from.
-        $settings->cacheVersion++;
-
+        // No cache bump: anything here that changes the worker changes its config hash, and with
+        // it the name of every cache.
         if (!Craft::$app->getPlugins()->savePluginSettings($plugin, $settings->toArray())) {
             $this->setFailFlash(Craft::t('pwa', 'Couldn’t save settings.'));
 
@@ -103,6 +136,17 @@ class SettingsController extends Controller
         $this->setSuccessFlash(Craft::t('pwa', 'Settings saved.'));
 
         return $this->redirect('pwa/settings/' . $section);
+    }
+
+    /**
+     * The posted values a section may set, by key — everything else dropped.
+     *
+     * @param array<string, mixed> $posted
+     * @return array<string, mixed>
+     */
+    public static function allowedValues(string $section, array $posted): array
+    {
+        return array_intersect_key($posted, array_flip(self::EDITABLE[$section] ?? []));
     }
 
     /**
@@ -139,9 +183,10 @@ class SettingsController extends Controller
         $this->requirePostRequest();
 
         $confirmation = trim((string)$this->request->getBodyParam('confirm', ''));
+        $word = self::rotateWord();
 
-        if (strtolower($confirmation) !== 'rotate') {
-            return $this->asFailure(Craft::t('pwa', 'Type “rotate” to confirm.'));
+        if (mb_strtolower($confirmation) !== mb_strtolower($word)) {
+            return $this->asFailure(Craft::t('pwa', 'Type “{word}” to confirm.', ['word' => $word]));
         }
 
         $plugin = Plugin::getInstance();
@@ -153,9 +198,18 @@ class SettingsController extends Controller
             return $this->asFailure(Craft::t('pwa', 'Could not rotate: {error}', ['error' => $e->getMessage()]));
         }
 
-        return $this->asSuccess(Craft::t('pwa', 'New keypair generated. {count} subscription(s) were dropped and will need to opt in again.', [
+        return $this->asSuccess(Craft::t('pwa', 'New keypair generated. {count, plural, =0{No subscriptions were} =1{# subscription was} other{# subscriptions were}} dropped and will need to opt in again.', [
             'count' => $dropped,
         ]));
+    }
+
+    /**
+     * The word typed to confirm a rotation — translated, and the same string the template asks
+     * for, so a translated screen does not ask for one word and accept another.
+     */
+    public static function rotateWord(): string
+    {
+        return Craft::t('pwa', 'rotate');
     }
 
     /** Checks that an imported keypair is actually a pair, before anything depends on it. */
@@ -168,7 +222,7 @@ class SettingsController extends Controller
             $keys = Plugin::getInstance()->push->getKeys();
             $usable = Encryptor::isUsableKey($keys['privateKey']);
         } catch (Throwable $e) {
-            return $this->asFailure($e->getMessage());
+            return $this->asFailure(Craft::t('pwa', 'The keypair could not be read: {error}', ['error' => $e->getMessage()]));
         }
 
         return $usable

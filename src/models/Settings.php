@@ -57,7 +57,7 @@ class Settings extends Model
      *
      * On by default because the alternative — every install editing templates before anything
      * works — is the reason most PWA integrations are abandoned halfway. Turning it off leaves the
-     * Twig functions (`pwa.head()`, `pwa.register()`, `pwa.installPrompt()`) as the only route in.
+     * Twig functions (`pwa.head()`, `pwa.manifestLink()`, `pwa.installPrompt()`) as the only route in.
      */
     public bool $injectHead = true;
 
@@ -136,15 +136,6 @@ class Settings extends Model
     /** Days a runtime-cached response may be served before it is refetched. */
     public int $cacheLifetimeDays = 30;
 
-    /**
-     * Bumping this invalidates every cache the worker owns.
-     *
-     * Written by the plugin whenever the manifest, the flight plan or the precache list changes,
-     * because a service worker that keeps serving yesterday's shell after a deploy is the single
-     * most common way a PWA turns into a support ticket.
-     */
-    public int $cacheVersion = 1;
-
     // Boarding — the install prompt.
     // ---------------------------------------------------------------------------------------
 
@@ -220,6 +211,29 @@ class Settings extends Model
     /** Consecutive failures before a subscriber is dropped. Gone (410) drops immediately. */
     public int $pushMaxFailures = 3;
 
+    /**
+     * The most devices the subscriber table may hold. Zero means no ceiling.
+     *
+     * Subscribing is anonymous, so the table's size is otherwise decided by whoever sends the
+     * most requests. A real audience this large is a site that will raise the number on purpose.
+     */
+    public int $pushMaxSubscribers = 250000;
+
+    /**
+     * New subscriptions accepted per minute across the whole site, from every address together.
+     *
+     * The per-address limit stops one client; this stops many. Resubscribes from known devices
+     * do not count against it.
+     */
+    public int $pushNewPerMinute = 300;
+
+    /**
+     * @var string[] Push-service hosts to accept beyond the browsers' own (Push::PUSH_HOSTS), for a
+     * browser whose service isn't listed. `*.example.com` matches subdomains. Config file only:
+     * the server POSTs to these hosts, so it is not a CP setting.
+     */
+    public array $extraPushHosts = [];
+
     /** Days of delivery records to keep. */
     public int $deliveryRetentionDays = 30;
 
@@ -250,11 +264,13 @@ class Settings extends Model
     /** Log verbosity for `storage/logs/pwa.log`. */
     public string $logLevel = LogLevel::INFO;
 
-    public function rules(): array
+    protected function defineRules(): array
     {
-        return [
+        return array_merge(parent::defineRules(), [
             [['manifestPath', 'serviceWorkerPath'], 'string'],
-            [['manifestPath', 'serviceWorkerPath'], 'validatePath'],
+            // Not skipped when empty: an empty path is the one value that must be refused, since it
+            // would register the manifest route on the site's home page.
+            [['manifestPath', 'serviceWorkerPath'], 'validatePath', 'skipOnEmpty' => false],
             [['maxCachedPages', 'maxCachedAssets', 'maxCachedImages'], 'integer', 'min' => 0, 'max' => 5000],
             [['cacheLifetimeDays', 'eventRetentionDays', 'deliveryRetentionDays', 'auditRetentionDays'], 'integer', 'min' => 0, 'max' => 3650],
             [['promptDelay'], 'integer', 'min' => 0, 'max' => 3600],
@@ -263,13 +279,18 @@ class Settings extends Model
             [['pushMaxFailures'], 'integer', 'min' => 1, 'max' => 100],
             [['preflightHour'], 'integer', 'min' => 0, 'max' => 23],
             [['preflightWeekday'], 'integer', 'min' => 1, 'max' => 7],
-            [['cacheVersion'], 'integer', 'min' => 1],
+            [['pushMaxSubscribers'], 'integer', 'min' => 0],
+            [['pushNewPerMinute'], 'integer', 'min' => 1, 'max' => 100000],
+            [['logLevel'], 'in', 'range' => [
+                LogLevel::DEBUG, LogLevel::INFO, LogLevel::NOTICE, LogLevel::WARNING,
+                LogLevel::ERROR, LogLevel::CRITICAL, LogLevel::ALERT, LogLevel::EMERGENCY,
+            ]],
             [['promptPosition'], 'in', 'range' => ['bottom', 'top', 'inline']],
             [['iosStatusBarStyle'], 'in', 'range' => ['default', 'black', 'black-translucent']],
             [['preflightCadence'], 'in', 'range' => ['daily', 'weekly']],
             [['pushSubject'], 'validateSubject'],
             [['preflightRecipients'], 'validateRecipients'],
-        ];
+        ]);
     }
 
     /**

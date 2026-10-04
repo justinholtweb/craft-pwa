@@ -4,7 +4,10 @@ namespace justinholtweb\pwa\services;
 
 use Craft;
 use craft\base\Component;
+use craft\db\Query;
+use craft\helpers\Db;
 use craft\helpers\Json;
+use craft\helpers\StringHelper;
 use craft\helpers\UrlHelper;
 use craft\models\Site;
 use justinholtweb\pwa\helpers\Files;
@@ -27,6 +30,11 @@ use justinholtweb\pwa\Plugin;
 class ServiceWorker extends Component
 {
     private const PLACEHOLDER = '/*__PWA_CONFIG__*/ {}';
+
+    /** The `pwa_state` row the invalidation counter lives in. */
+    private const COUNTER = 'cacheCounter';
+
+    private ?int $counter = null;
 
     /** The finished worker, ready to be served. */
     public function render(?Site $site = null): string
@@ -53,7 +61,7 @@ class ServiceWorker extends Component
     {
         $plugin = Plugin::getInstance();
         $settings = $plugin->getSettings();
-        $manifest = $settings->getManifest($site->uid);
+        $manifest = $plugin->manifests->forSite($site);
 
         $routes = array_map(
             static fn(Route $route) => $route->toWorkerArray(),
@@ -61,7 +69,6 @@ class ServiceWorker extends Component
         );
 
         $config = [
-            'version' => $settings->cacheVersion,
             'scope' => $manifest->getEffectiveScope(),
             'appName' => $manifest->getEffectiveName(),
             'startUrl' => $manifest->getEffectiveStartUrl(),
@@ -90,7 +97,40 @@ class ServiceWorker extends Component
             $config['pushBadge'] = $settings->pushBadge;
         }
 
-        return $config;
+        // The version names every cache the worker owns, so it changes whenever anything the worker
+        // was generated from changes (the hash) or somebody asks for a clean slate (the counter).
+        // Neither half is project config: the hash is derived, and the counter is a database row,
+        // so invalidating works on an environment where admin changes are off.
+        return ['version' => $this->versionFor($config)] + $config;
+    }
+
+    /**
+     * The cache version for a worker config: the invalidation counter and a short hash of the
+     * config itself, so editing the flight plan or the manifest needs no separate bump.
+     *
+     * @param array<string, mixed> $config
+     */
+    public function versionFor(array $config): string
+    {
+        unset($config['version']);
+
+        return $this->counter() . '-' . substr(sha1(Json::encode($config)), 0, 8);
+    }
+
+    /** How many times the caches have been invalidated by hand. Starts at 1. */
+    public function counter(bool $fresh = false): int
+    {
+        if ($this->counter !== null && !$fresh) {
+            return $this->counter;
+        }
+
+        $value = (new Query())
+            ->select(['value'])
+            ->from('{{%pwa_state}}')
+            ->where(['name' => self::COUNTER])
+            ->scalar();
+
+        return $this->counter = max(1, (int)$value);
     }
 
     /**
@@ -171,20 +211,31 @@ class ServiceWorker extends Component
     }
 
     /**
-     * Bumps the cache version, which is how anything invalidates the worker's caches.
+     * Bumps the invalidation counter, which is how anything throws the worker's caches away.
      *
-     * Called whenever the flight plan, the precache list or the manifest changes. It is a single
-     * integer because it has one job: to make every cache name different from the ones the
-     * previous worker was using, so activation cleans them up.
+     * Called by the "invalidate caches" button and after icons are regenerated — the two cases
+     * where what the worker serves changes without its configuration changing. Everything else
+     * (the flight plan, the manifest, the precache list) changes the config hash on its own.
+     *
+     * A database row rather than a setting: this has to work in production, where project config
+     * is read-only, and it must survive a cache flush.
      */
-    public function invalidate(): void
+    public function invalidate(): int
     {
-        $plugin = Plugin::getInstance();
-        $settings = $plugin->getSettings();
-        $settings->cacheVersion++;
+        $db = Craft::$app->getDb();
+        $next = $this->counter(true) + 1;
+        $now = Db::prepareDateForDb(new \DateTime());
 
-        Craft::$app->getPlugins()->savePluginSettings($plugin, $settings->toArray());
+        $db->createCommand()->upsert(
+            '{{%pwa_state}}',
+            ['name' => self::COUNTER, 'value' => (string)$next, 'dateCreated' => $now, 'dateUpdated' => $now, 'uid' => StringHelper::UUID()],
+            ['value' => (string)$next, 'dateUpdated' => $now],
+        )->execute();
 
-        Plugin::info("Cache version bumped to {$settings->cacheVersion}.");
+        $this->counter = $next;
+
+        Plugin::info("Cache counter bumped to {$next}.");
+
+        return $next;
     }
 }

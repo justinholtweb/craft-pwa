@@ -1,0 +1,6 @@
+{# How an audit was started, in words rather than the stored key. #}
+{{- {
+    manual: "Run by hand"|t('pwa'),
+    console: "Command line"|t('pwa'),
+    scheduled: "Scheduled"|t('pwa'),
+}[trigger] ?? trigger -}}

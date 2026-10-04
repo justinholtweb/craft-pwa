@@ -1,3 +1,10 @@
+---
+title: Preflight
+slug: preflight
+order: 70
+summary: Every check preflight makes over HTTP, which ones block an install, and how the score works.
+---
+
 # Preflight
 
 Preflight fetches the running site over HTTP the way a browser would and grades what comes back. It

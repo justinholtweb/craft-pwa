@@ -19,6 +19,7 @@
         "add to home screen"
     ],
     "license": "proprietary",
+    "homepage": "https://justinholt.com/plugins/craft-pwa",
     "minimum-stability": "dev",
     "prefer-stable": true,
     "authors": [
@@ -28,7 +29,8 @@
         }
     ],
     "support": {
-        "docs": "https://craft-pwa.com/docs",
+        "email": "justin@justinholt.com",
+        "docs": "https://justinholt.com/plugins/craft-pwa/docs",
         "source": "https://github.com/justinholtweb/craft-pwa",
         "issues": "https://github.com/justinholtweb/craft-pwa/issues"
     },
@@ -41,7 +43,12 @@
     "require-dev": {
         "craftcms/ecs": "dev-main",
         "craftcms/phpstan": "dev-main",
-        "phpunit/phpunit": "^10.5"
+        "phpunit/phpunit": "^10.5",
+        "phpstan/phpstan": "^1.12 || ^2.2"
+    },
+    "suggest": {
+        "ext-imagick": "Generates the icon set and iOS splash screens with better resampling than GD.",
+        "ext-gd": "Generates the icon set when Imagick is not available."
     },
     "autoload": {
         "psr-4": {
@@ -59,8 +66,7 @@
     "config": {
         "allow-plugins": {
             "yiisoft/yii2-composer": true,
-            "craftcms/plugin-installer": true,
-            "craftcms/generator": true
+            "craftcms/plugin-installer": true
         }
     },
     "extra": {
@@ -68,7 +74,7 @@
         "handle": "pwa",
         "developer": "Justin Holt",
         "developerUrl": "https://justinholt.com",
-        "documentationUrl": "https://craft-pwa.com/docs",
+        "documentationUrl": "https://justinholt.com/plugins/craft-pwa/docs",
         "changelogUrl": "https://raw.githubusercontent.com/justinholtweb/craft-pwa/main/CHANGELOG.md",
         "class": "justinholtweb\\pwa\\Plugin"
     }

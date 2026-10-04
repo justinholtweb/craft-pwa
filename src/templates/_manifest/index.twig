@@ -1,0 +1,231 @@
+{% extends "_layouts/cp" %}
+{% import "_includes/forms" as forms %}
+
+{% set title = "Manifest"|t('pwa') %}
+{% set selectedSubnavItem = 'manifest' %}
+{% set fullPageForm = not readOnly %}
+
+{% do view.registerTranslations('pwa', ['Could not generate the icons.']) %}
+
+{% set displayOptions = [
+    { label: "Standalone — its own window, no browser chrome"|t('pwa'), value: 'standalone' },
+    { label: "Minimal UI — its own window with back and reload"|t('pwa'), value: 'minimal-ui' },
+    { label: "Fullscreen — no system UI at all"|t('pwa'), value: 'fullscreen' },
+    { label: "Browser — an ordinary tab (nothing will offer to install)"|t('pwa'), value: 'browser' },
+] %}
+
+{% block content %}
+    {% include "pwa/_partials/style" %}
+    {% if readOnly %}
+        {% include "pwa/_partials/read-only" %}
+    {% endif %}
+
+    {% if not readOnly %}
+        {{ actionInput('pwa/manifest/save') }}
+        {{ redirectInput('pwa/manifest?siteHandle=' ~ site.handle) }}
+        {{ hiddenInput('siteUid', site.uid) }}
+    {% endif %}
+
+    {% if sites|length > 1 %}
+        <div class="pane">
+            <p class="pwa-sub">
+                {{ "Two sites are two apps as far as a browser is concerned — different names, different scopes, their own icons. This manifest is for {site}."|t('pwa', { site: site.name }) }}
+            </p>
+            <nav aria-label="{{ 'Site'|t('pwa') }}">
+                <div class="btngroup">
+                    {% for one in sites %}
+                        <a class="btn{{ one.id == site.id ? ' active' : '' }}" href="{{ url('pwa/manifest', { siteHandle: one.handle }) }}"{% if one.id == site.id %} aria-current="page"{% endif %}>{{ one.name }}</a>
+                    {% endfor %}
+                </div>
+            </nav>
+        </div>
+    {% endif %}
+
+    <div class="pane">
+        <h2>{{ "Identity"|t('pwa') }}</h2>
+
+        {{ forms.textField({
+            label: "Name"|t('pwa'),
+            instructions: "The full name, shown in the install dialog. Falls back to the site name."|t('pwa'),
+            id: 'name',
+            name: 'name',
+            disabled: readOnly,
+            errors: manifest.getErrors('name'),
+            value: manifest.name,
+            placeholder: site.name,
+        }) }}
+
+        {{ forms.textField({
+            label: "Short name"|t('pwa'),
+            instructions: "What fits under the home screen icon. Twelve characters or fewer survives on most launchers."|t('pwa'),
+            id: 'shortName',
+            name: 'shortName',
+            disabled: readOnly,
+            errors: manifest.getErrors('shortName'),
+            value: manifest.shortName,
+            placeholder: manifest.effectiveName,
+        }) }}
+
+        {{ forms.textareaField({
+            label: "Description"|t('pwa'),
+            id: 'description',
+            name: 'description',
+            disabled: readOnly,
+            errors: manifest.getErrors('description'),
+            value: manifest.description,
+            rows: 2,
+        }) }}
+    </div>
+
+    <div class="pane">
+        <h2>{{ "Behaviour"|t('pwa') }}</h2>
+
+        {{ forms.textField({
+            label: "Start URL"|t('pwa'),
+            instructions: "Where a launch from the home screen lands. Relative to this site."|t('pwa'),
+            id: 'startUrl',
+            name: 'startUrl',
+            disabled: readOnly,
+            errors: manifest.getErrors('startUrl'),
+            value: manifest.startUrl,
+            placeholder: '/',
+        }) }}
+
+        {{ forms.textField({
+            label: "Scope"|t('pwa'),
+            instructions: "The URLs the app covers. Anything outside opens in a browser tab instead. Leave empty to use the site's own path."|t('pwa'),
+            id: 'scope',
+            name: 'scope',
+            disabled: readOnly,
+            errors: manifest.getErrors('scope'),
+            value: manifest.scope,
+            placeholder: manifest.effectiveScope,
+        }) }}
+
+        {{ forms.selectField({
+            label: "Display"|t('pwa'),
+            id: 'display',
+            name: 'display',
+            disabled: readOnly,
+            errors: manifest.getErrors('display'),
+            value: manifest.display,
+            options: displayOptions,
+        }) }}
+
+        {{ forms.selectField({
+            label: "Orientation"|t('pwa'),
+            id: 'orientation',
+            name: 'orientation',
+            disabled: readOnly,
+            errors: manifest.getErrors('orientation'),
+            value: manifest.orientation,
+            options: [
+                { label: "Any"|t('pwa'), value: 'any' },
+                { label: "Portrait"|t('pwa'), value: 'portrait' },
+                { label: "Landscape"|t('pwa'), value: 'landscape' },
+            ],
+        }) }}
+
+        {{ forms.textField({
+            label: "App ID"|t('pwa'),
+            instructions: "Identifies the app across changes to the start URL. Leave empty to use the scope, which is what browsers assume."|t('pwa'),
+            id: 'id',
+            name: 'id',
+            disabled: readOnly,
+            errors: manifest.getErrors('id'),
+            value: manifest.id,
+            placeholder: manifest.effectiveScope,
+        }) }}
+    </div>
+
+    <div class="pane">
+        <h2>{{ "Appearance"|t('pwa') }}</h2>
+
+        {{ forms.colorField({
+            label: "Theme colour"|t('pwa'),
+            instructions: "Paints the title bar and the task switcher."|t('pwa'),
+            id: 'themeColor',
+            name: 'themeColor',
+            disabled: readOnly,
+            errors: manifest.getErrors('themeColor'),
+            value: manifest.themeColor,
+        }) }}
+
+        {{ forms.colorField({
+            label: "Background colour"|t('pwa'),
+            instructions: "What shows while the app is starting, before the first paint. Match your page background or the launch flashes."|t('pwa'),
+            id: 'backgroundColor',
+            name: 'backgroundColor',
+            disabled: readOnly,
+            errors: manifest.getErrors('backgroundColor'),
+            value: manifest.backgroundColor,
+        }) }}
+
+        {{ forms.elementSelectField({
+            label: "Icon source"|t('pwa'),
+            instructions: "One square PNG, JPEG or WebP image, 512×512 or larger. Every icon the manifest, iOS and the browser tab need is generated from it."|t('pwa'),
+            id: 'iconAssetId',
+            name: 'iconAssetId',
+            disabled: readOnly,
+            errors: manifest.getErrors('iconAssetId'),
+            elementType: 'craft\\elements\\Asset',
+            criteria: { kind: ['image'], filename: ['*.png', '*.jpg', '*.jpeg', '*.webp'] },
+            limit: 1,
+            elements: manifest.sourceAsset ? [manifest.sourceAsset] : [],
+        }) }}
+
+        {{ forms.elementSelectField({
+            label: "Maskable icon"|t('pwa'),
+            instructions: "Optional. Launchers crop icons to their own shape, so the main one is inset automatically — supply a pre-padded version here if you would rather control it."|t('pwa'),
+            id: 'maskableAssetId',
+            name: 'maskableAssetId',
+            disabled: readOnly,
+            errors: manifest.getErrors('maskableAssetId'),
+            elementType: 'craft\\elements\\Asset',
+            criteria: { kind: ['image'], filename: ['*.png', '*.jpg', '*.jpeg', '*.webp'] },
+            limit: 1,
+            elements: manifest.maskableAsset ? [manifest.maskableAsset] : [],
+        }) }}
+
+        {% if icons|length %}
+            <div class="pwa-icons mt-m">
+                {% for icon in icons|filter(i => i.sizes in ['192x192', '512x512']) %}
+                    <figure>
+                        <img src="{{ icon.src }}" width="64" height="64" alt="">
+                        <figcaption>{{ icon.sizes }}<br>{{ icon.purpose }}</figcaption>
+                    </figure>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <div class="mt-m">
+            {{ forms.button({
+                label: "Regenerate icons"|t('pwa'),
+                id: 'pwa-regenerate',
+                spinner: true,
+            }) }}
+            {% if needsGenerating %}
+                <span class="pwa-sub">{{ "The source image has changed since these were made."|t('pwa') }}</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="pane">
+        <h2>{{ "What is served"|t('pwa') }}</h2>
+        <p class="pwa-sub">{{ "The manifest as a browser receives it right now."|t('pwa') }}</p>
+        <pre class="code pwa-preview" tabindex="0" aria-label="{{ 'Manifest JSON'|t('pwa') }}">{{ preview }}</pre>
+    </div>
+{% endblock %}
+
+{% js %}
+    document.getElementById('pwa-regenerate')?.addEventListener('click', function() {
+        this.classList.add('loading');
+        Craft.sendActionRequest('POST', 'pwa/manifest/regenerate-icons', { data: { siteUid: {{ site.uid|json_encode|raw }} } })
+            .then(response => {
+                Craft.cp.displayNotice(response.data.message);
+                window.location.reload();
+            })
+            .catch(e => Craft.cp.displayError(e?.response?.data?.message || Craft.t('pwa', 'Could not generate the icons.')))
+            .finally(() => this.classList.remove('loading'));
+    });
+{% endjs %}

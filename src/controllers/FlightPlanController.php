@@ -34,14 +34,19 @@ class FlightPlanController extends Controller
         return true;
     }
 
-    public function actionIndex(): Response
+    /**
+     * @param Route[]|null $postedRoutes What a failed save posted, so it can be corrected rather
+     * than retyped.
+     */
+    public function actionIndex(?array $postedRoutes = null): Response
     {
         $plugin = Plugin::getInstance();
         $settings = $plugin->getSettings();
 
-        return $this->renderTemplate('pwa/flight-plan/index', [
+        return $this->renderTemplate('pwa/_flight-plan/index', [
             'settings' => $settings,
-            'routes' => $settings->getRoutes(),
+            'readOnly' => !Craft::$app->getConfig()->getGeneral()->allowAdminChanges,
+            'routes' => $postedRoutes ?? $settings->getRoutes(),
             'isCustom' => !empty($settings->routes),
             'isPro' => $plugin->isPro(),
             'strategies' => [
@@ -68,16 +73,19 @@ class FlightPlanController extends Controller
     public function actionSave(): ?Response
     {
         $this->requirePostRequest();
+        $this->requireAdminChanges();
 
         $plugin = Plugin::getInstance();
 
         if (!$plugin->isPro()) {
-            throw new ForbiddenHttpException('Editing the flight plan requires PWA Pro.');
+            throw new ForbiddenHttpException(Craft::t('pwa', 'Editing the flight plan requires PWA Pro.'));
         }
 
         $settings = $plugin->getSettings();
         $posted = $this->request->getBodyParam('routes', []);
         $routes = [];
+        $models = [];
+        $valid = true;
 
         foreach (is_array($posted) ? $posted : [] as $row) {
             if (!is_array($row) || trim((string)($row['pattern'] ?? '')) === '') {
@@ -95,12 +103,18 @@ class FlightPlanController extends Controller
                 'enabled' => !isset($row['enabled']) || !empty($row['enabled']),
             ]);
 
-            if (!$route->validate()) {
-                $this->setFailFlash(Craft::t('pwa', 'One of the rules is not valid: {error}', [
-                    'error' => implode(' ', $route->getFirstErrors()),
-                ]));
+            $models[] = $route;
 
-                return null;
+            if (!$route->validate()) {
+                if ($valid) {
+                    $this->setFailFlash(Craft::t('pwa', 'Rule {n} is not valid: {error}', [
+                        'n' => count($models),
+                        'error' => implode(' ', $route->getFirstErrors()),
+                    ]));
+                }
+
+                $valid = false;
+                continue;
             }
 
             $routes[] = $route->toArray([
@@ -108,16 +122,24 @@ class FlightPlanController extends Controller
             ]);
         }
 
+        if (!$valid) {
+            // Re-rendered with what was posted, so one bad pattern does not cost the rest.
+            Craft::$app->getUrlManager()->setRouteParams(['postedRoutes' => $models]);
+
+            return null;
+        }
+
         $settings->routes = $routes;
 
         if (!Craft::$app->getPlugins()->savePluginSettings($plugin, $settings->toArray())) {
             $this->setFailFlash(Craft::t('pwa', 'Couldn’t save the flight plan.'));
+            Craft::$app->getUrlManager()->setRouteParams(['postedRoutes' => $models]);
+
             return null;
         }
 
-        // Any change here changes what the worker does, so every cache it holds is now describing
-        // a plan that no longer exists.
-        $plugin->serviceWorker->invalidate();
+        // No explicit cache bump: the routes are part of the worker's config, so the new plan
+        // changes its cache version, and every cache describing the old plan is dropped.
 
         $this->setSuccessFlash(Craft::t('pwa', 'Flight plan saved.'));
 
@@ -128,13 +150,15 @@ class FlightPlanController extends Controller
     public function actionReset(): Response
     {
         $this->requirePostRequest();
+        $this->requireAdminChanges();
 
         $plugin = Plugin::getInstance();
         $settings = $plugin->getSettings();
         $settings->routes = [];
 
-        Craft::$app->getPlugins()->savePluginSettings($plugin, $settings->toArray());
-        $plugin->serviceWorker->invalidate();
+        if (!Craft::$app->getPlugins()->savePluginSettings($plugin, $settings->toArray())) {
+            return $this->asFailure(Craft::t('pwa', 'Couldn’t reset the flight plan.'));
+        }
 
         return $this->asSuccess(Craft::t('pwa', 'Flight plan reset to the defaults.'));
     }
@@ -163,5 +187,16 @@ class FlightPlanController extends Controller
         }
 
         return $this->asJson(['matched' => false]);
+    }
+
+    /**
+     * Manifests and the flight plan are project config. Where admin changes are off they arrive by
+     * deploy; a save here used to throw from deep inside project config instead of saying so.
+     */
+    private function requireAdminChanges(): void
+    {
+        if (!Craft::$app->getConfig()->getGeneral()->allowAdminChanges) {
+            throw new ForbiddenHttpException(Craft::t('pwa', 'This is project config, and admin changes are not allowed on this environment.'));
+        }
     }
 }

@@ -4,6 +4,7 @@ namespace justinholtweb\pwa\services;
 
 use Craft;
 use craft\base\Component;
+use craft\elements\Asset;
 use craft\helpers\Json;
 use craft\models\Site;
 use justinholtweb\pwa\models\Manifest;
@@ -24,14 +25,37 @@ use justinholtweb\pwa\Plugin;
 class Manifests extends Component
 {
     /**
+     * Manifests already built this request, by site UID.
+     *
+     * Building one queries for its two assets, and a single page asks for the same site's
+     * manifest from the head tags, the runtime config, the worker config and the icons.
+     *
+     * @var array<string, Manifest>
+     */
+    private array $memo = [];
+
+    /** One site's manifest, built once per request. */
+    public function forSite(?Site $site = null): Manifest
+    {
+        $site ??= Craft::$app->getSites()->getCurrentSite();
+
+        return $this->memo[$site->uid] ??= Plugin::getInstance()->getSettings()->getManifest($site->uid);
+    }
+
+    /** Forgets what was built, after a save or anything else that changes the settings. */
+    public function reset(): void
+    {
+        $this->memo = [];
+    }
+
+    /**
      * The manifest for a site, as an array ready to be encoded.
      *
      * @return array<string, mixed>
      */
     public function build(?Site $site = null): array
     {
-        $site ??= Craft::$app->getSites()->getCurrentSite();
-        $manifest = Plugin::getInstance()->getSettings()->getManifest($site->uid);
+        $manifest = $this->forSite($site);
 
         $data = $manifest->toManifestArray();
         $icons = Plugin::getInstance()->icons->manifestIcons($manifest);
@@ -73,13 +97,9 @@ class Manifests extends Component
         $out = [];
 
         foreach ($manifest->screenshots as $screenshot) {
-            $assetId = (int)($screenshot['assetId'] ?? 0);
-
-            if ($assetId === 0) {
-                continue;
-            }
-
-            $asset = Craft::$app->getAssets()->getAssetById($assetId);
+            $asset = !empty($screenshot['assetUid'])
+                ? Asset::find()->uid((string)$screenshot['assetUid'])->status(null)->one()
+                : (!empty($screenshot['assetId']) ? Craft::$app->getAssets()->getAssetById((int)$screenshot['assetId']) : null);
 
             if ($asset === null || !$asset->getWidth() || !$asset->getHeight()) {
                 continue;
@@ -118,9 +138,8 @@ class Manifests extends Component
     /**
      * Saves one site's manifest back into project config, regenerating icons if the source changed.
      *
-     * Bumping the cache version here rather than in the settings screen is the point: a manifest
-     * change that does not invalidate the service worker's caches is a change nobody sees until
-     * they clear site data.
+     * No cache bump is needed: the worker's cache version includes a hash of the configuration it
+     * was generated from, so a changed manifest renames every cache on its own.
      */
     public function save(Manifest $manifest): bool
     {
@@ -132,23 +151,35 @@ class Manifests extends Component
         $settings = $plugin->getSettings();
         $siteUid = (string)$manifest->siteUid;
 
+        // Assets by UID: an element ID synced to another environment points at the wrong asset.
         $config = $manifest->toArray([
             'name', 'shortName', 'description', 'startUrl', 'scope', 'display', 'displayOverride',
             'orientation', 'themeColor', 'backgroundColor', 'lang', 'dir', 'categories',
-            'iconAssetId', 'maskableAssetId', 'shortcuts', 'screenshots', 'id',
-        ]);
+            'shortcuts', 'screenshots', 'id',
+        ]) + $manifest->assetUids();
+        $config['screenshots'] = array_map(static function($screenshot) {
+            if (is_array($screenshot) && !empty($screenshot['assetId']) && empty($screenshot['assetUid'])) {
+                $screenshot['assetUid'] = Asset::find()->id((int)$screenshot['assetId'])->status(null)->site('*')->one()?->uid;
+                unset($screenshot['assetId']);
+            }
+
+            return $screenshot;
+        }, (array)$config['screenshots']);
 
         $manifests = $settings->manifests;
         $manifests[$siteUid] = $config;
         $settings->manifests = $manifests;
-        $settings->cacheVersion++;
 
         if (!Craft::$app->getPlugins()->savePluginSettings($plugin, $settings->toArray())) {
             return false;
         }
 
-        if ($plugin->icons->needsGenerating($manifest)) {
-            $plugin->icons->generate($manifest, $settings->splashEnabled);
+        $this->reset();
+
+        // New icons at the same URLs change nothing the worker was configured with, so the
+        // cached copies have to be thrown away by hand.
+        if ($plugin->icons->needsGenerating($manifest) && $plugin->icons->generate($manifest, $settings->splashEnabled) > 0) {
+            $plugin->serviceWorker->invalidate();
         }
 
         return true;

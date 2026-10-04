@@ -1,3 +1,10 @@
+---
+title: Extending PWA
+slug: extending
+order: 90
+summary: Placing the tags by hand, the page runtime, worker messages, services and permissions.
+---
+
 # Extending PWA
 
 ## Placing the tags yourself
@@ -14,6 +21,12 @@ That emits exactly what injection would have — the same code path, so the two 
 Injection is skipped automatically for control panel requests, Ajax, live preview, non-HTML
 responses, and any page that already has a `<link rel="manifest">` — so a template that calls
 `pwa.head()` while injection is still on does not get two.
+
+It is also skipped for documents that aren't pages the site rendered: anything answering an
+`actions/…` URL, and any response sent with `Content-Security-Policy: sandbox` — the signal for a
+document meant to run in a frame, cut off from the site, such as an embed proxy. A plugin or
+module serving its own frame documents can rely on that header to keep the service worker
+registration out of them.
 
 ## The runtime
 
@@ -71,7 +84,7 @@ $plugin = Plugin::getInstance();
 $plugin->manifests->build($site);            // the manifest as an array
 $plugin->manifests->json($site);
 $plugin->serviceWorker->render($site);       // the finished worker
-$plugin->serviceWorker->invalidate();        // bump the cache version
+$plugin->serviceWorker->invalidate();        // throw away every installed cache (a DB counter)
 $plugin->icons->generate($manifest);         // rebuild the icon set
 $plugin->preflight->run($site);              // returns an Audit
 $plugin->events->topOfflinePaths();          // precache candidates

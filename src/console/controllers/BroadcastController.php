@@ -60,7 +60,7 @@ class BroadcastController extends Controller
             return ExitCode::DATAERR;
         }
 
-        $targets = count($plugin->push->getSubscribers($campaign->siteId, $campaign->topics));
+        $targets = $plugin->push->countMatching($campaign->siteId, $campaign->topics);
 
         $this->stdout("“{$campaign->title}” → {$targets} device(s)\n");
 
